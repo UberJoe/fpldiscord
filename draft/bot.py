@@ -4,8 +4,6 @@ from discord.ext import commands
 from draft import utils
 import pandas as pd
 
-import config as cnf
-
 description = 'Bot for Coq Au Ian'
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix='!', description=description, intents=intents)
