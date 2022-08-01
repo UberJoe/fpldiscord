@@ -1,0 +1,6 @@
+draft/config.py
+draft/test.py
+draft/__pycache__
+Lib
+Scripts
+pyvenv.cfg
