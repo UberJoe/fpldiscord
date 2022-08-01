@@ -1,4 +1,3 @@
-import getpass
 import os
 import requests
 import json
@@ -17,10 +16,10 @@ def get_json():
     :returns: 
     """
     json_files = [
-        '../data/transactions.json',
-        '../data/elements.json',
-        '../data/details.json',
-        '../data/element_status.json'
+        os.path.realpath("")+'/../data/transactions.json',
+        os.path.realpath("")+'/../data/elements.json',
+        os.path.realpath("")+'/../data/details.json',
+        os.path.realpath("")+'/../data/element_status.json'
     ]
     
     apis = [
@@ -31,7 +30,6 @@ def get_json():
     ]
     
     # Post credentials for authentication
-    # pwd = getpass.getpass('Enter Password: ')
     session = requests.session()
     url = 'https://users.premierleague.com/accounts/login/'
     payload = {
@@ -52,21 +50,21 @@ def get_json():
 def get_data(df_name):
     # Dataframes from the details.json
     if df_name == 'league_entries':
-        with open('../data/details.json') as json_data:
+        with open(os.path.realpath("")+'/../data/details.json') as json_data:
             d = json.load(json_data)
             league_entry_df = pd.json_normalize(d['league_entries'])
             
         return league_entry_df
     
     elif df_name == 'matches':
-        with open('../data/details.json') as json_data:
+        with open(os.path.realpath("")+'/../data/details.json') as json_data:
             d = json.load(json_data)
             matches_df = pd.json_normalize(d['matches'])
             
         return matches_df
     
     elif df_name == 'standings':
-        with open('../data/details.json') as json_data:
+        with open(os.path.realpath("")+'/../data/details.json') as json_data:
             d = json.load(json_data)
             standings_df = pd.json_normalize(d['standings'])
             
@@ -74,14 +72,14 @@ def get_data(df_name):
     
     # Dataframes from the elements.json
     elif df_name == 'elements':
-        with open('../data/elements.json') as json_data:
+        with open(os.path.realpath("")+'/../data/elements.json') as json_data:
             d = json.load(json_data)
             elements_df = pd.json_normalize(d['elements'])
             
         return elements_df
     
     elif df_name == 'element_types':
-        with open('../data/elements.json') as json_data:
+        with open(os.path.realpath("")+'/../data/elements.json') as json_data:
             d = json.load(json_data)
             element_types_df = pd.json_normalize(d['element_types'])
             
@@ -89,7 +87,7 @@ def get_data(df_name):
     
     # Dataframes from the transactions.json
     elif df_name == 'transactions':
-        with open('../data/transactions.json') as json_data:
+        with open(os.path.realpath("")+'/../data/transactions.json') as json_data:
             d = json.load(json_data)
             transactions_df = pd.json_normalize(d['transactions'])
             
@@ -97,8 +95,72 @@ def get_data(df_name):
     
     # Dataframes from the element_status.json
     elif df_name == 'element_status':
-        with open('../data/element_status.json') as json_data:
+        with open(os.path.realpath("")+'/../data/element_status.json') as json_data:
             d = json.load(json_data)
             element_status_df = pd.json_normalize(d['element_status'])
             
         return element_status_df
+
+def get_team_players():
+    
+    # Pull the required dataframes
+    element_status_df = get_data('element_status')
+    elements_df = get_data('elements')
+    element_types_df = get_data('element_types')
+    league_entry_df = get_data('league_entries')
+    matches_df = get_data('matches')
+    standings_df = get_data('standings')
+    
+    # Built the initial player -> team dataframe
+    players_df = (pd.merge(element_status_df,
+                           league_entry_df,
+                           how="outer",
+                           left_on='owner',
+                           right_on='entry_id'
+                        )
+              .drop(columns=['in_accepted_trade',
+                            'owner',
+                            'status',
+                            'entry_id',
+                            'entry_name',
+                            'id',
+                            'joined_time',
+                            'player_last_name',
+                            'short_name',
+                            'waiver_pick'])
+              .rename(columns={'player_first_name':'team'})
+             )
+    
+    # Get the element details
+    players_df = pd.merge(players_df, elements_df, how="outer", left_on='element', right_on='id')
+    players_df = players_df[['team_x',
+                             'element',
+                             'web_name',
+                             'first_name',
+                             'second_name',
+                             'total_points',
+                             'goals_scored',
+                             'goals_conceded',
+                             'clean_sheets',
+                             'assists',
+                             'bonus',
+                             'draft_rank',
+                             'element_type',
+                             'points_per_game',
+                             'red_cards',
+                             'yellow_cards'
+                            ]]
+    
+    # Get the player types (GK, FWD etc.)
+    players_df = (pd.merge(players_df,
+                         element_types_df,
+                         how='outer',
+                         left_on='element_type',
+                         right_on='id')
+                 .drop(columns=['id',
+                                'plural_name_short',
+                                'singular_name',
+                                'singular_name_short'])
+                )
+
+    return players_df

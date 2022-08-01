@@ -4,6 +4,8 @@ from discord.ext import commands
 from draft import utils
 import pandas as pd
 
+import config as cnf
+
 description = 'Bot for Coq Au Ian'
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix='!', description=description, intents=intents)
@@ -15,18 +17,16 @@ async def refresh_data(ctx):
 
 @bot.command()
 async def owner(ctx, *, player: str):
-    elements_df = utils.get_data('elements')
-    element_status_df = utils.get_data('element_status')
-    players_df = pd.merge(elements_df, element_status_df, how="outer", left_on="id", right_on="element")
+    players_df = utils.get_team_players()
     
-    results_df = players_df.loc[players_df['web_name'].str.lower() == player.lower()]
-    if results_df.empty:
+    player_df = players_df.loc[players_df['web_name'].str.lower() == player.lower()]
+    if player_df.empty:
         await ctx.send("Player not found")
         return
 
-    for row in results_df.itertuples():
-        if row.owner is not None:
-            await ctx.send(row.first_name + ' ' + row.second_name + ' is owned by: ' + row.owner)
+    for row in player_df.itertuples():
+        if (type(row.team_x) == str):
+            await ctx.send(row.first_name + ' ' + row.second_name + ' is owned by: ' + row.team_x)
         else:
             await ctx.send(row.first_name + ' ' + row.second_name + ' is a free agent!')
 
