@@ -2,7 +2,6 @@ import getpass
 import requests
 import json
 import pandas as pd
-import config as cnf
 from boto.s3.connection import S3Connection
 
 def get_json():
@@ -36,8 +35,8 @@ def get_json():
     session = requests.session()
     url = 'https://users.premierleague.com/accounts/login/'
     payload = {
-     'password': S3Connection(os.environ('pwd')),
-     'login': S3Connection(os.environ('email')),
+     'password': S3Connection(os.environ['pwd']),
+     'login': S3Connection(os.environ['email']),
      'redirect_uri': 'https://fantasy.premierleague.com/a/login',
      'app': 'plfpl-web'
     }
