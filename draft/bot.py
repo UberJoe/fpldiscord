@@ -1,8 +1,8 @@
 import discord
+import os
 from discord.ext import commands
 from draft import utils
 import pandas as pd
-from boto.s3.connection import S3Connection
 
 description = 'Bot for Coq Au Ian'
 intents = discord.Intents.all()
@@ -34,4 +34,4 @@ async def owner(ctx, *, player: str):
 async def dave(ctx):
     await ctx.send("fuck you Dave")
 
-bot.run(S3Connection(os.environ['token']))
+bot.run(os.environ['token'])
