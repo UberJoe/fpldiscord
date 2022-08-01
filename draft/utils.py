@@ -16,10 +16,10 @@ def get_json():
     :returns: 
     """
     json_files = [
-        os.path.realpath("")+'/../data/transactions.json',
-        os.path.realpath("")+'/../data/elements.json',
-        os.path.realpath("")+'/../data/details.json',
-        os.path.realpath("")+'/../data/element_status.json'
+        os.path.realpath("")+'/data/transactions.json',
+        os.path.realpath("")+'/data/elements.json',
+        os.path.realpath("")+'/data/details.json',
+        os.path.realpath("")+'/data/element_status.json'
     ]
     
     apis = [
@@ -50,21 +50,21 @@ def get_json():
 def get_data(df_name):
     # Dataframes from the details.json
     if df_name == 'league_entries':
-        with open(os.path.realpath("")+'/../data/details.json') as json_data:
+        with open(os.path.realpath("")+'/data/details.json') as json_data:
             d = json.load(json_data)
             league_entry_df = pd.json_normalize(d['league_entries'])
             
         return league_entry_df
     
     elif df_name == 'matches':
-        with open(os.path.realpath("")+'/../data/details.json') as json_data:
+        with open(os.path.realpath("")+'/data/details.json') as json_data:
             d = json.load(json_data)
             matches_df = pd.json_normalize(d['matches'])
             
         return matches_df
     
     elif df_name == 'standings':
-        with open(os.path.realpath("")+'/../data/details.json') as json_data:
+        with open(os.path.realpath("")+'/data/details.json') as json_data:
             d = json.load(json_data)
             standings_df = pd.json_normalize(d['standings'])
             
@@ -72,14 +72,14 @@ def get_data(df_name):
     
     # Dataframes from the elements.json
     elif df_name == 'elements':
-        with open(os.path.realpath("")+'/../data/elements.json') as json_data:
+        with open(os.path.realpath("")+'/data/elements.json') as json_data:
             d = json.load(json_data)
             elements_df = pd.json_normalize(d['elements'])
             
         return elements_df
     
     elif df_name == 'element_types':
-        with open(os.path.realpath("")+'/../data/elements.json') as json_data:
+        with open(os.path.realpath("")+'/data/elements.json') as json_data:
             d = json.load(json_data)
             element_types_df = pd.json_normalize(d['element_types'])
             
@@ -87,7 +87,7 @@ def get_data(df_name):
     
     # Dataframes from the transactions.json
     elif df_name == 'transactions':
-        with open(os.path.realpath("")+'/../data/transactions.json') as json_data:
+        with open(os.path.realpath("")+'/data/transactions.json') as json_data:
             d = json.load(json_data)
             transactions_df = pd.json_normalize(d['transactions'])
             
@@ -95,7 +95,7 @@ def get_data(df_name):
     
     # Dataframes from the element_status.json
     elif df_name == 'element_status':
-        with open(os.path.realpath("")+'/../data/element_status.json') as json_data:
+        with open(os.path.realpath("")+'/data/element_status.json') as json_data:
             d = json.load(json_data)
             element_status_df = pd.json_normalize(d['element_status'])
             
