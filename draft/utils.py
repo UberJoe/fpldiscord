@@ -2,6 +2,7 @@ import os
 import requests
 import json
 import pandas as pd
+import math
 
 def get_json():
     """
@@ -108,7 +109,6 @@ def get_team_players():
     elements_df = get_data('elements')
     element_types_df = get_data('element_types')
     league_entry_df = get_data('league_entries')
-    matches_df = get_data('matches')
     standings_df = get_data('standings')
     
     # Built the initial player -> team dataframe
@@ -164,3 +164,43 @@ def get_team_players():
                 )
 
     return players_df
+
+def get_fixtures():
+    matches_df = get_data('matches')
+    league_entry_df = get_data('league_entries')
+
+    # Join to get team names and player names of entry 1 (home team)
+    matches_df = pd.merge(matches_df,
+                          league_entry_df[['id', 'player_first_name']],
+                          how='left',
+                          left_on='league_entry_1',
+                          right_on='id')
+
+    # Join to get team names and player names of entry 2 (away team)
+    matches_df = pd.merge(matches_df,
+                          league_entry_df[['id', 'player_first_name']],
+                          how='left',
+                          left_on='league_entry_2',
+                          right_on='id')
+
+    # Drop unused columns, rename for clearer columns
+    matches_df = (matches_df
+                 .drop(['finished', 'started', 'id_x', 'id_y', 'league_entry_1', 'league_entry_2'], axis=1)
+                .rename(columns={'event':'match',
+                           'player_first_name_x': 'home_player',
+                           'league_entry_1_points': 'home_score',
+                           'player_first_name_y': 'away_player',
+                           'league_entry_2_points': 'away_score',
+                          })
+                )
+
+    return matches_df
+
+def current_gw():
+    matches_df = get_data('matches')       
+    num_gameweeks = matches_df[matches_df['finished'] == True]['event'].max()
+    
+    if math.isnan(num_gameweeks):
+        num_gameweeks = 1
+
+    return num_gameweeks
