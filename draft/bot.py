@@ -3,7 +3,7 @@ import discord
 import os
 from discord.ext import commands
 import pandas as pd
-import config as cnf # uncomment if in dev env
+# import config as cnf # uncomment if in dev env
 
 description = 'Bot for Coq Au Ian'
 intents = discord.Intents.all()
