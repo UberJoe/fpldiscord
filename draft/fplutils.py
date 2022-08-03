@@ -3,6 +3,8 @@ import requests
 import json
 import pandas as pd
 import math
+import unidecode
+
 
 class Utils:
 
@@ -132,6 +134,8 @@ class Utils:
                                     'singular_name_short'])
                     )
 
+        players_df['web_name'] = players_df['web_name'].apply(self.remove_accents)
+
         return players_df
 
     def get_fixtures(self):
@@ -173,3 +177,6 @@ class Utils:
             num_gameweeks = 1
 
         return num_gameweeks
+
+    def remove_accents(self, string: str):
+        return unidecode.unidecode(string)
