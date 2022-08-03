@@ -3,55 +3,64 @@ import discord
 import os
 from discord.ext import commands
 import pandas as pd
-# import config as cnf # uncomment if in dev env
+import config as cnf # uncomment if in dev env
 
 description = 'Bot for Coq Au Ian'
 intents = discord.Intents.all()
-bot = commands.Bot(command_prefix='!', description=description, intents=intents)
+bot = discord.Bot(debug_guilds=[1001437221640994836])
 u = Utils()
 
+fixtures = bot.create_group("fixtures", "retrieve fixtures")
+
 @bot.command()
-async def owner(ctx, *, player: str):
-    players_df = u.get_team_players()
-    
-    player_df = players_df.loc[players_df['web_name'].str.lower() == player.lower()]
+async def owner(ctx, *, player_name: discord.Option(str)):
+    player_df = u.get_player_attr(player_name, "team_x")
+
     if player_df.empty:
-        await ctx.send("Player not found")
+        await ctx.respond("Player not found")
         return
 
+    response = ''
     for row in player_df.itertuples():
         if (type(row.team_x) == str):
-            await ctx.send(row.first_name + ' ' + row.second_name + ' is owned by: ' + row.team_x)
+            response += row.first_name + ' ' + row.second_name + ' is owned by: ' + row.team_x + '\n'
         else:
-            await ctx.send(row.first_name + ' ' + row.second_name + ' is a free agent!')
+            response += row.first_name + ' ' + row.second_name + ' is a free agent!\n'
+    await ctx.respond(response)
 
-@bot.group(name='fixtures', invoke_without_command=True)
-async def fixtures(ctx):
+@fixtures.command()
+async def this_week(ctx):
     matches_df = u.get_fixtures()
     gw_df = matches_df.loc[matches_df['match'] == u.current_gw()]
 
+    response = ""
     for row in gw_df.itertuples():
-        await ctx.send(row.home_player + " vs " + row.away_player)
+        response += row.home_player + " vs " + row.away_player + "\n"
+    await ctx.respond(response)
 
 @fixtures.command(name='gw')
-async def gw_subcommand(ctx, week: int):
+async def gw_subcommand(ctx, gameweek: discord.Option(int)):
     matches_df = u.get_fixtures()
-    gw_df = matches_df.loc[matches_df['match'] == week]
+    gw_df = matches_df.loc[matches_df['match'] == gameweek]
 
+    response = ""
     for row in gw_df.itertuples():
-        await ctx.send(row.home_player + " vs " + row.away_player)
+        response += row.home_player + " vs " + row.away_player + "\n"
+    await ctx.respond(response)
 
 @fixtures.command(name='team')
-async def team_subcommand(ctx, team: str):
+async def team_subcommand(ctx, team: discord.Option(str)):
     matches_df = u.get_fixtures()
     next5_df = matches_df.loc[matches_df['match'] < (u.current_gw() + 5)]
     team_df = next5_df.loc[(next5_df['home_player'].str.lower() == team.lower()) | (next5_df['away_player'].str.lower() == team.lower())]
 
+    response = ""
     for row in team_df.itertuples():
-        await ctx.send(row.home_player + " vs " + row.away_player)
+        response += row.home_player + " vs " + row.away_player + "\n"
+    await ctx.respond(response)
 
 @bot.command()
 async def dave(ctx):
-    await ctx.send("fuck you Dave")
+    await ctx.respond("fuck you Dave")
 
 bot.run(os.environ['token'])
