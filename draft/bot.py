@@ -7,7 +7,7 @@ import pandas as pd
 
 description = 'Bot for Coq Au Ian'
 intents = discord.Intents.all()
-bot = discord.Bot(debug_guilds=[1001437221640994836])
+bot = discord.Bot(debug_guilds=[1001437221640994836, 1000070235954610177])
 u = Utils()
 
 fixtures = bot.create_group("fixtures", "retrieve fixtures")
