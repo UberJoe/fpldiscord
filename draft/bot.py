@@ -3,13 +3,12 @@ import discord
 import os
 from discord.ext import commands
 import pandas as pd
-# import config as cnf # uncomment if in dev env
-# bot = discord.Bot(debug_guilds=[1001437221640994836])
+from config import Cnf
+
+conf = Cnf()
+bot = conf.setupEnv()
 
 description = 'Bot for Coq Au Ian'
-intents = discord.Intents.all()
-
-bot = discord.Bot()
 u = Utils()
 
 fixtures = bot.create_group("fixtures", "retrieve fixtures")
