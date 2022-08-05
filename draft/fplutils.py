@@ -19,8 +19,8 @@ class Utils:
         self.session = requests.session()
         url = 'https://users.premierleague.com/accounts/login/'
         payload = {
-        'password': os.environ['pwd'],
-        'login': os.environ['email'],
+        'password': os.getenv('PWD'),
+        'login': os.getenv('EMAIL'),
         'redirect_uri': 'https://fantasy.premierleague.com/a/login',
         'app': 'plfpl-web'
         }

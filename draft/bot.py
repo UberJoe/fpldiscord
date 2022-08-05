@@ -1,12 +1,14 @@
 from fplutils import Utils
 import discord
 import os
+from dotenv import load_dotenv
 from discord.ext import commands
 import pandas as pd
-from config import Cnf
 
-conf = Cnf()
-bot = conf.setupEnv()
+dotenv_path = 'config.env'
+load_dotenv(dotenv_path=dotenv_path)
+
+bot = discord.Bot(debug_guilds=[os.getenv('DEBUG_GUILDS')])
 
 description = 'Bot for Coq Au Ian'
 u = Utils()
@@ -64,4 +66,4 @@ async def team_subcommand(ctx, team: discord.Option(str)):
 async def dave(ctx):
     await ctx.respond("fuck you Dave")
 
-bot.run(os.environ['token'])
+bot.run(os.getenv('TOKEN'))
