@@ -7,8 +7,10 @@ import pandas as pd
 
 dotenv_path = 'config.env'
 load_dotenv(dotenv_path=dotenv_path)
-
-bot = discord.Bot(debug_guilds=os.getenv('DEBUG_GUILDS'))
+if os.getenv('DEBUG_GUILDS') is not None:
+    bot = discord.Bot(debug_guilds=[os.getenv('DEBUG_GUILDS')])
+else:
+    bot = discord.Bot()
 
 description = 'Bot for Coq Au Ian'
 u = Utils()
