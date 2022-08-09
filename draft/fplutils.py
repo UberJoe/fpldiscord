@@ -199,6 +199,7 @@ class Utils:
     def current_gw(self):
         matches_df = self.get_data('matches')       
         num_gameweeks = matches_df[matches_df['finished'] == True]['event'].max()
+        num_gameweeks += 1
         
         if math.isnan(num_gameweeks):
             num_gameweeks = 1
