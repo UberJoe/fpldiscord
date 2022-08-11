@@ -75,16 +75,16 @@ async def team(ctx, owner: discord.Option(str, description="Team owner's first n
 
     response = ""
     for row in team_gk_df.itertuples():
-        response += row.web_name + " | "
-    response += "\n\n"
+        response += "**" + row.web_name + "**" + " (" + row.short_name + ")\n"
+    response += "\n"
     for row in team_def_df.itertuples():
-        response += row.web_name + " | "
-    response += "\n\n"
+        response += "**" + row.web_name + "**" + " (" + row.short_name + ")\n"
+    response += "\n"
     for row in team_mid_df.itertuples():
-        response += row.web_name + " | "
-    response += "\n\n"
+        response += "**" + row.web_name + "**" + " (" + row.short_name + ")\n"
+    response += "\n"
     for row in team_att_df.itertuples():
-        response += row.web_name + " | "
+        response += "**" + row.web_name + "**" + " (" + row.short_name + ")\n"
     await ctx.respond(response)
 
 @bot.command(description="Responds with a message for whenever Dave pipes up")

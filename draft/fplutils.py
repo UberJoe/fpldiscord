@@ -58,6 +58,12 @@ class Utils:
             element_types_df = pd.json_normalize(r['element_types'])
                 
             return element_types_df
+
+        elif df_name == 'teams':
+            r = self.session.get(self.api['elements']).json()
+            elements_df = pd.json_normalize(r['teams'])
+                
+            return elements_df
         
         # Dataframes from the transactions.json
         elif df_name == 'transactions':
@@ -80,6 +86,7 @@ class Utils:
         elements_df = self.get_data('elements')
         element_types_df = self.get_data('element_types')
         league_entry_df = self.get_data('league_entries')
+        teams_df = self.get_data('teams')
         standings_df = self.get_data('standings')
         
         # Built the initial player -> team dataframe
@@ -99,7 +106,7 @@ class Utils:
                     'player_last_name',
                     'short_name',
                     'waiver_pick'])
-                .rename(columns={'player_first_name':'team'})
+                .rename(columns={'player_first_name':'team_x'})
         )
         
         # Get the element details
@@ -120,7 +127,8 @@ class Utils:
             'element_type',
             'points_per_game',
             'red_cards',
-            'yellow_cards'
+            'yellow_cards',
+            'team'
         ]]
         
         # Get the player types (GK, FWD etc.)
@@ -135,6 +143,19 @@ class Utils:
                         'singular_name',
                         'singular_name_short'])
         )
+
+        players_df = (pd.merge(players_df, 
+                               teams_df,
+                               how='outer',
+                               left_on='team',
+                               right_on='id')
+                        .drop(
+                            columns=[
+                            'code',
+                            'id',
+                            'pulse_id'
+                        ])
+                        .rename(columns={'name':'team_name'}))
 
         players_df['web_name'] = players_df['web_name'].apply(self.remove_accents)
 
