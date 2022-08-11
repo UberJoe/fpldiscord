@@ -66,10 +66,12 @@ async def team_subcommand(ctx, team: discord.Option(str, description="Team owner
 
 @bot.command(description="Responds with the full team of the specified owner")
 async def team(ctx, owner: discord.Option(str, description="Team owner's first name")):
-    team_gk_df = u.get_team(owner, 'Goalkeepers')
-    team_def_df = u.get_team(owner, 'Defenders')
-    team_mid_df = u.get_team(owner, 'Midfielders')
-    team_att_df = u.get_team(owner, 'Forwards')
+    team_df = u.get_team(owner)
+
+    team_gk_df = team_df.loc[team_df['plural_name'] == 'Goalkeepers']
+    team_def_df = team_df.loc[team_df['plural_name'] == 'Defenders']
+    team_mid_df = team_df.loc[team_df['plural_name'] == 'Midfielders']
+    team_att_df = team_df.loc[team_df['plural_name'] == 'Forwards']
 
     response = ""
     for row in team_gk_df.itertuples():
