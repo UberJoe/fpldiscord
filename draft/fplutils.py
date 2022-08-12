@@ -4,6 +4,7 @@ import json
 import pandas as pd
 import math
 import unidecode
+from datetime import datetime, timedelta
 
 
 class Utils:
@@ -17,6 +18,10 @@ class Utils:
 
     def __init__(self):
         self.session = requests.session()
+        self.update_time = datetime.min
+        self.data = self.update_data()
+
+    def login(self):
         url = 'https://users.premierleague.com/accounts/login/'
         payload = {
         'password': os.getenv('PWD'),
@@ -26,56 +31,75 @@ class Utils:
         }
         self.session.post(url, data=payload)
 
+    def update_data(self):
+        now = datetime.now()
+
+        data = {}
+        if  (
+                self.update_time < (now - timedelta(hours=1))
+            ):
+                print('Calling for data from FPL API')
+                data['transactions'] = self.session.get(self.api['transactions']).json()
+                data['elements'] = self.session.get(self.api['elements']).json()
+                data['details'] = self.session.get(self.api['details']).json()
+                data['element_status'] = self.session.get(self.api['element_status']).json()
+                self.update_time = now
+        return data
+
+    def get_waiver_time(self, gw=0):
+        if self.data is None:
+            self.update_data()
+        if gw == 0:
+            gw = self.current_gw() - 1
+        
+        ts = self.data['elements']['events']['data'][gw]['waivers_time']
+        return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")
+
+
     def get_data(self, df_name):
+        self.update_data()
+        
         # Dataframes from the details.json
         if df_name == 'league_entries':
-            r = self.session.get(self.api['details']).json()
-            league_entry_df = pd.json_normalize(r['league_entries'])
+            league_entry_df = pd.json_normalize(self.data['details']['league_entries'])
                 
             return league_entry_df
         
         elif df_name == 'matches':
-            r = self.session.get(self.api['details']).json()
-            matches_df = pd.json_normalize(r['matches'])
+            matches_df = pd.json_normalize(self.data['details']['matches'])
                 
             return matches_df
         
         elif df_name == 'standings':
-            r = self.session.get(self.api['details']).json()
-            standings_df = pd.json_normalize(r['standings'])
+            standings_df = pd.json_normalize(self.data['details']['standings'])
                 
             return standings_df
         
         # Dataframes from the elements.json
         elif df_name == 'elements':
-            r = self.session.get(self.api['elements']).json()
-            elements_df = pd.json_normalize(r['elements'])
+            elements_df = pd.json_normalize(self.data['elements']['elements'])
                 
             return elements_df
         
         elif df_name == 'element_types':
-            r = self.session.get(self.api['elements']).json()
-            element_types_df = pd.json_normalize(r['element_types'])
+            element_types_df = pd.json_normalize(self.data['elements']['element_types'])
                 
             return element_types_df
 
         elif df_name == 'teams':
-            r = self.session.get(self.api['elements']).json()
-            elements_df = pd.json_normalize(r['teams'])
+            elements_df = pd.json_normalize(self.data['elements']['teams'])
                 
             return elements_df
         
         # Dataframes from the transactions.json
         elif df_name == 'transactions':
-            r = self.session.get(self.api['transactions']).json()
-            transactions_df = pd.json_normalize(r['transactions'])
-                
+            transactions_df = pd.json_normalize(self.data['transactions']['transactions'])
+
             return transactions_df
         
         # Dataframes from the element_status.json
         elif df_name == 'element_status':
-            r = self.session.get(self.api['element_status']).json()
-            element_status_df = pd.json_normalize(r['element_status'])
+            element_status_df = pd.json_normalize(self.data['element_status']['element_status'])
                 
             return element_status_df
 
@@ -87,7 +111,6 @@ class Utils:
         element_types_df = self.get_data('element_types')
         league_entry_df = self.get_data('league_entries')
         teams_df = self.get_data('teams')
-        standings_df = self.get_data('standings')
         
         # Built the initial player -> team dataframe
         players_df = (pd.merge(element_status_df,
@@ -217,13 +240,20 @@ class Utils:
 
         return matches_df
 
-    def current_gw(self):
-        matches_df = self.get_data('matches')       
-        num_gameweeks = matches_df[matches_df['finished'] == True]['event'].max()
-        num_gameweeks += 1
+    def get_transactions(self):
+        transactions_df = self.get_data('transactions')
         
-        if math.isnan(num_gameweeks):
-            num_gameweeks = 1
+        return transactions_df
+
+    def current_gw(self):
+        num_gameweeks = 1
+        if len(self.data) != 0:
+            matches_df = self.get_data('matches')     
+            num_gameweeks = matches_df[matches_df['finished'] == True]['event'].max()
+            num_gameweeks += 1
+            
+            if math.isnan(num_gameweeks):
+                num_gameweeks = 1
 
         return num_gameweeks
 

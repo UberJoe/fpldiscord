@@ -1,1 +1,1 @@
-worker: python3 draft/bot.py
+worker: python3 -u draft/bot.py
