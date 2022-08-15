@@ -271,7 +271,7 @@ class Utils:
         if gw != 0:
             transactions_df = transactions_df.loc[transactions_df['event'] == gw]
 
-        transactions_df = transactions_df.sort_values('i', axis=0, ascending=True)
+        transactions_df = transactions_df.sort_values(by=['event', 'i'], axis=0, ascending=True)
 
         return transactions_df
 
