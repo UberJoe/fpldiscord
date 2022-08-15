@@ -1,8 +1,8 @@
 from fplutils import Utils
 import discord
+from discord import Option
 import os
 from dotenv import load_dotenv
-from discord.ext import commands
 import pandas as pd
 
 dotenv_path = 'config.env'
@@ -85,6 +85,25 @@ async def team(ctx, owner: discord.Option(str, description="Team owner's first n
     response += "\n"
     for row in team_att_df.itertuples():
         response += "**" + row.web_name + "**" + " (" + row.short_name + ")\n"
+    await ctx.respond(response)
+
+@bot.command(description="Responds with this week's waivers")
+async def waivers(ctx, gameweek: discord.Option(int, description="GW to show waivers of (0 for all waivers)", max_value=38, min_value=0) = u.current_gw()):
+    this_gw = u.current_gw()
+    if gameweek > this_gw:
+        gameweek = this_gw
+    transactions_df = u.get_transactions(gameweek)
+    if transactions_df.empty:
+        await ctx.respond("Couldn't find any waivers for GW" + str(gameweek))
+        return
+
+    response = "**Waivers in GW" + str(gameweek) + ":**\n"
+    for row in transactions_df.itertuples():
+        response += row.short_name + ":  " + row.element_out + "  ->  " + row.element_in
+        if row.result == 'a':
+            response += " :white_check_mark:\n"
+        else:
+            response += " :x:\n"
     await ctx.respond(response)
 
 @bot.command(description="Responds with a message for whenever Dave pipes up")

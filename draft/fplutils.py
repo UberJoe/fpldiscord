@@ -240,9 +240,39 @@ class Utils:
 
         return matches_df
 
-    def get_transactions(self):
+    def get_transactions(self, gw=0):
         transactions_df = self.get_data('transactions')
-        
+        players_df = self.get_data('elements')
+        league_entries_df = self.get_data('league_entries')
+
+        transactions_df = (pd.merge(transactions_df,
+                                players_df[['web_name', 'id']],
+                                how='left',
+                                left_on='element_in',
+                                right_on='id')
+                            .drop(['element_in'], axis=1)
+                            .rename(columns={'web_name':'element_in'}))
+
+        transactions_df = (pd.merge(transactions_df,
+                                players_df[['web_name', 'id']],
+                                how='left',
+                                left_on='element_out',
+                                right_on='id')
+                            .drop(['element_out', 'id_x', 'id_y', 'id'], axis=1)
+                            .rename(columns={'web_name':'element_out'}))
+
+        transactions_df = (pd.merge(transactions_df,
+                                league_entries_df,
+                                how='left',
+                                left_on='entry',
+                                right_on='entry_id')
+                            .drop(['entry', 'id', 'waiver_pick', 'joined_time', 'entry_id', 'entry_name', 'priority'], axis=1)
+                            .rename(columns={'index':'i'}))
+        if gw != 0:
+            transactions_df = transactions_df.loc[transactions_df['event'] == gw]
+
+        transactions_df = transactions_df.sort_values('i', axis=0, ascending=True)
+
         return transactions_df
 
     def current_gw(self):
