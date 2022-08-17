@@ -67,8 +67,8 @@ async def team_subcommand(ctx, team: discord.Option(str, description="Team owner
         response += row.home_player + " vs " + row.away_player + "\n"
     await ctx.respond(response)
 
-@bot.command(description="Responds with the full team of the specified owner")
-async def team(ctx, owner: discord.Option(str, description="Team owner's first name")):
+@bot.command(description="Responds with the team of the specified owner as a list")
+async def teamlist(ctx, owner: discord.Option(str, description="Team owner's first name")):
     team_df = u.get_team(owner)
 
     team_gk_df = team_df.loc[team_df['plural_name'] == 'Goalkeepers']
@@ -113,8 +113,8 @@ async def waivers(ctx, gameweek: discord.Option(int, description="GW to show wai
 async def dave(ctx):
     await ctx.respond("fuck you Dave")
 
-@bot.command(name = "teamimage", description="Return team image")
-async def team_image(ctx, owner: discord.Option(str, description="Team owner's first name")):
+@bot.command(description="Responds with an image of the team owned by the specified owner")
+async def team(ctx, owner: discord.Option(str, description="Team owner's first name")):
     team_df = u.get_team(owner)
     team_image = img.main(team_df)
     with io.BytesIO() as image_binary:
