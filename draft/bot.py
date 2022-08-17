@@ -1,4 +1,6 @@
+import io
 from fplutils import Utils
+from teamImg import TeamImg
 import discord
 from discord import Option
 import os
@@ -13,6 +15,7 @@ if os.getenv('DEBUG_GUILDS') is not None:
 else:
     bot = discord.Bot()
 
+img = TeamImg()
 u = Utils()
 
 fixtures = bot.create_group("fixtures", "retrieve fixtures")
@@ -109,5 +112,14 @@ async def waivers(ctx, gameweek: discord.Option(int, description="GW to show wai
 @bot.command(description="Responds with a message for whenever Dave pipes up")
 async def dave(ctx):
     await ctx.respond("fuck you Dave")
+
+@bot.command(name = "teamimage", description="Return team image")
+async def team_image(ctx, owner: discord.Option(str, description="Team owner's first name")):
+    team_df = u.get_team(owner)
+    team_image = img.main(team_df)
+    with io.BytesIO() as image_binary:
+        team_image.save(image_binary, 'PNG')
+        image_binary.seek(0)
+        await ctx.respond(file=discord.File(fp=image_binary, filename='team_image.png'))
 
 bot.run(os.getenv('TOKEN'))
