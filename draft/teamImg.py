@@ -50,7 +50,7 @@ class TeamImg:
             background.paste(shirt, offset, shirt)
 
             w, h = shirt.width + shirt.width // 3 * 2, shirt.height // 4
-            textoverlay = self.generate_player_text((w,h), 'Helvetica-Bold', 10, (55,0,60), "White", row.web_name)
+            textoverlay = self.generate_player_text((w,h), 'Helvetica-Bold.ttf', 10, (55,0,60), "White", row.web_name)
             textoffset = (player_place - (shirt.width // 4), height + shirt.height)
             background.paste(textoverlay, textoffset, textoverlay)
 
