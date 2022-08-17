@@ -120,6 +120,6 @@ async def team_image(ctx, owner: discord.Option(str, description="Team owner's f
     with io.BytesIO() as image_binary:
         team_image.save(image_binary, 'PNG')
         image_binary.seek(0)
-        await ctx.respond(file=discord.File(fp=image_binary, filename='team_image.png'))
+        await ctx.respond(owner + "'s team", file=discord.File(fp=image_binary, filename='team_image.png'))
 
 bot.run(os.getenv('TOKEN'))
