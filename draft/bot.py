@@ -1,4 +1,6 @@
+import io
 from fplutils import Utils
+from teamImg import TeamImg
 import discord
 from discord import Option
 import os
@@ -13,6 +15,7 @@ if os.getenv('DEBUG_GUILDS') is not None:
 else:
     bot = discord.Bot()
 
+img = TeamImg()
 u = Utils()
 
 fixtures = bot.create_group("fixtures", "retrieve fixtures")
@@ -64,8 +67,8 @@ async def team_subcommand(ctx, team: discord.Option(str, description="Team owner
         response += row.home_player + " vs " + row.away_player + "\n"
     await ctx.respond(response)
 
-@bot.command(description="Responds with the full team of the specified owner")
-async def team(ctx, owner: discord.Option(str, description="Team owner's first name")):
+@bot.command(description="Responds with the team of the specified owner as a list")
+async def teamlist(ctx, owner: discord.Option(str, description="Team owner's first name")):
     team_df = u.get_team(owner)
 
     team_gk_df = team_df.loc[team_df['plural_name'] == 'Goalkeepers']
@@ -109,5 +112,14 @@ async def waivers(ctx, gameweek: discord.Option(int, description="GW to show wai
 @bot.command(description="Responds with a message for whenever Dave pipes up")
 async def dave(ctx):
     await ctx.respond("fuck you Dave")
+
+@bot.command(description="Responds with an image of the team owned by the specified owner")
+async def team(ctx, owner: discord.Option(str, description="Team owner's first name")):
+    team_df = u.get_team(owner)
+    team_image = img.main(team_df)
+    with io.BytesIO() as image_binary:
+        team_image.save(image_binary, 'PNG')
+        image_binary.seek(0)
+        await ctx.respond(owner + "'s team", file=discord.File(fp=image_binary, filename='team_image.png'))
 
 bot.run(os.getenv('TOKEN'))
