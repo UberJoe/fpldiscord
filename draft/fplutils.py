@@ -13,13 +13,16 @@ class Utils:
         'transactions': 'https://draft.premierleague.com/api/draft/league/36298/transactions',
         'elements': 'https://draft.premierleague.com/api/bootstrap-static',
         'details': 'https://draft.premierleague.com/api/league/36298/details',
-        'element_status': 'https://draft.premierleague.com/api/league/36298/element-status'
+        'element_status': 'https://draft.premierleague.com/api/league/36298/element-status',
+        'game': 'https://draft.premierleague.com/api/game'
     }
 
     def __init__(self):
         self.session = requests.session()
         self.update_time = datetime.min
+        self.gw_info = self.get_gw_info()
         self.data = self.update_data()
+
 
     def login(self):
         url = 'https://users.premierleague.com/accounts/login/'
@@ -33,16 +36,22 @@ class Utils:
 
     def update_data(self):
         now = datetime.now()
+        gw_info = self.get_gw_info()
 
         data = {}
         if  (
                 self.update_time < (now - timedelta(hours=1))
+                or
+                self.gw_info["current_event"] != gw_info["current_event"]
+                or 
+                self.gw_info["waivers_processed"] != gw_info["waivers_processed"]
             ):
                 print('Calling for data from FPL API')
                 data['transactions'] = self.session.get(self.api['transactions']).json()
                 data['elements'] = self.session.get(self.api['elements']).json()
                 data['details'] = self.session.get(self.api['details']).json()
                 data['element_status'] = self.session.get(self.api['element_status']).json()
+                self.gw = gw_info
                 self.update_time = now
         return data
 
@@ -286,6 +295,9 @@ class Utils:
                 num_gameweeks = 1
 
         return num_gameweeks
+
+    def get_gw_info(self):
+        return self.session.get(self.api['game']).json()
 
     def remove_accents(self, string: str):
         return unidecode.unidecode(string)
