@@ -39,31 +39,18 @@ async def owner(ctx, *, player_name: discord.Option(str, description="Player's n
 @fixtures.command(description="Responds with the H2H fixtures for the coming GW")
 async def this_week(ctx):
     matches_df = u.get_fixtures()
-    gw_df = matches_df.loc[matches_df['match'] == u.current_gw()]
 
     response = ""
-    for row in gw_df.itertuples():
+    for row in matches_df.itertuples():
         response += row.home_player + " vs " + row.away_player + "\n"
     await ctx.respond(response)
 
 @fixtures.command(name='gw', description="Responds with the H2H fixtures for the specified GW")
 async def gw_subcommand(ctx, gameweek: discord.Option(int, description="Gameweek number")):
-    matches_df = u.get_fixtures()
-    gw_df = matches_df.loc[matches_df['match'] == gameweek]
+    matches_df = u.get_fixtures(gameweek)
 
     response = ""
-    for row in gw_df.itertuples():
-        response += row.home_player + " vs " + row.away_player + "\n"
-    await ctx.respond(response)
-
-@fixtures.command(name='team', description="Responds with the next 5 H2H fixtures for the specified team")
-async def team_subcommand(ctx, team: discord.Option(str, description="Team owner's first name")):
-    matches_df = u.get_fixtures()
-    next5_df = matches_df.loc[matches_df['match'] < (u.current_gw() + 5)]
-    team_df = next5_df.loc[(next5_df['home_player'].str.lower() == team.lower()) | (next5_df['away_player'].str.lower() == team.lower())]
-
-    response = ""
-    for row in team_df.itertuples():
+    for row in matches_df.itertuples():
         response += row.home_player + " vs " + row.away_player + "\n"
     await ctx.respond(response)
 
@@ -121,5 +108,14 @@ async def team(ctx, owner: discord.Option(str, description="Team owner's first n
         team_image.save(image_binary, 'PNG')
         image_binary.seek(0)
         await ctx.respond(owner + "'s team", file=discord.File(fp=image_binary, filename='team_image.png'))
+
+@bot.command(description="Get the scores of the current gameweek (live). Specify GW for previous weeks' results.")
+async def scores(ctx):
+    scores_df = u.get_scores()
+
+    response = ""
+    for row in scores_df.itertuples():
+        response += row.home_player + " **" + str(row.home_score) + "** - **" + str(row.away_score) + "** " + row.away_player + "\n"
+    await ctx.respond(response)
 
 bot.run(os.getenv('TOKEN'))

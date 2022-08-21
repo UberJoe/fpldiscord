@@ -1,4 +1,5 @@
 import os
+from turtle import home
 import requests
 import json
 import pandas as pd
@@ -14,7 +15,9 @@ class Utils:
         'elements': 'https://draft.premierleague.com/api/bootstrap-static',
         'details': 'https://draft.premierleague.com/api/league/36298/details',
         'element_status': 'https://draft.premierleague.com/api/league/36298/element-status',
-        'game': 'https://draft.premierleague.com/api/game'
+        'game': 'https://draft.premierleague.com/api/game',
+        'public': 'https://draft.premierleague.com/api/entry/{}/public',
+        'entry': 'https://draft.premierleague.com/api/entry/{}/event/{}'
     }
 
     def __init__(self):
@@ -22,7 +25,6 @@ class Utils:
         self.update_time = datetime.min
         self.gw_info = self.get_gw_info()
         self.data = self.update_data()
-
 
     def login(self):
         url = 'https://users.premierleague.com/accounts/login/'
@@ -218,27 +220,35 @@ class Utils:
 
         return team_df
 
-    def get_fixtures(self):
+    def get_fixtures(self, gw=0):
+        if gw == 0:
+            gw = self.current_gw()
+
         matches_df = self.get_data('matches')
         league_entry_df = self.get_data('league_entries')
 
         # Join to get team names and player names of entry 1 (home team)
-        matches_df = pd.merge(matches_df,
-                            league_entry_df[['id', 'player_first_name']],
+        matches_df = (pd.merge(matches_df,
+                            league_entry_df[['id', 'player_first_name', 'entry_id']],
                             how='left',
                             left_on='league_entry_1',
                             right_on='id')
+                        .rename(columns={'entry_id':'entry_id_home'
+                                })
+                    )
 
         # Join to get team names and player names of entry 2 (away team)
-        matches_df = pd.merge(matches_df,
-                            league_entry_df[['id', 'player_first_name']],
+        matches_df = (pd.merge(matches_df,
+                            league_entry_df[['id', 'player_first_name', 'entry_id']],
                             how='left',
                             left_on='league_entry_2',
                             right_on='id')
+                        .rename(columns={'entry_id':'entry_id_away'})
+                    )
 
         # Drop unused columns, rename for clearer columns
         matches_df = (matches_df
-                    .drop(['finished', 'started', 'id_x', 'id_y', 'league_entry_1', 'league_entry_2'], axis=1)
+                    .drop(['finished', 'started', 'id_x', 'id_y'], axis=1)
                     .rename(columns={'event':'match',
                             'player_first_name_x': 'home_player',
                             'league_entry_1_points': 'home_score',
@@ -246,6 +256,8 @@ class Utils:
                             'league_entry_2_points': 'away_score',
                             })
                     )
+
+        matches_df = matches_df.loc[matches_df['match'] == gw]
 
         return matches_df
 
@@ -284,6 +296,26 @@ class Utils:
 
         return transactions_df
 
+    def get_scores(self):
+        matches_df = self.get_fixtures()
+        
+        for row in matches_df.itertuples():
+            url = self.api["public"].format(row.entry_id_home)
+            r = self.session.get(url).json()
+
+            home_public_df = pd.json_normalize(r["entry"])
+            for pub_row in home_public_df.itertuples():
+                matches_df._set_value(row.Index, 'home_score', pub_row.event_points)
+
+            url = self.api["public"].format(row.entry_id_away)
+            r = self.session.get(url).json()
+            
+            away_public_df = pd.json_normalize(r["entry"])
+            for pub_row in away_public_df.itertuples():
+                matches_df._set_value(row.Index, 'away_score', pub_row.event_points)
+        
+        return matches_df
+
     def current_gw(self):
         num_gameweeks = 1
         if len(self.data) != 0:
@@ -295,6 +327,9 @@ class Utils:
                 num_gameweeks = 1
 
         return num_gameweeks
+
+    def get_entries(self):
+        self.get_data('details')
 
     def get_gw_info(self):
         return self.session.get(self.api['game']).json()
