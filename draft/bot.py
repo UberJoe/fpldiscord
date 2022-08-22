@@ -113,9 +113,13 @@ async def team(ctx, owner: discord.Option(str, description="Team owner's first n
 async def scores(ctx):
     scores_df = u.get_scores()
 
+    home_str_len = scores_df["home_player"].str.len().max()
+
     response = ""
     for row in scores_df.itertuples():
-        response += row.home_player + " **" + str(row.home_score) + "** - **" + str(row.away_score) + "** " + row.away_player + "\n"
-    await ctx.respond(response)
+        home_spaces = home_str_len - len(row.home_player)
+        response += "```" + row.home_player + home_spaces*" " + "     " + str(row.home_score) + " - " + str(row.away_score) + "     " + row.away_player + "```"
+    embed = discord.Embed(title="Live scores for this gameweek", description=response)
+    await ctx.respond(embed=embed)
 
 bot.run(os.getenv('TOKEN'))
