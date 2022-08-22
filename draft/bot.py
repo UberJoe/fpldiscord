@@ -87,14 +87,15 @@ async def waivers(ctx, gameweek: discord.Option(int, description="GW to show wai
         await ctx.respond("Couldn't find any waivers for GW" + str(gameweek))
         return
 
-    response = "**Waivers in GW" + str(gameweek) + ":**\n"
+    response = ""
     for row in transactions_df.itertuples():
         response += row.short_name + ":  " + row.element_out + "  ->  " + row.element_in
         if row.result == 'a':
             response += " :white_check_mark:\n"
         else:
             response += " :x:\n"
-    await ctx.respond(response)
+    embed = discord.Embed(title="Waivers in GW" + str(gameweek), description=response)
+    await ctx.respond(embed=embed)
 
 @bot.command(description="Responds with a message for whenever Dave pipes up")
 async def dave(ctx):
