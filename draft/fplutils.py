@@ -15,7 +15,7 @@ class Utils:
         'details': 'https://draft.premierleague.com/api/league/36298/details',
         'element_status': 'https://draft.premierleague.com/api/league/36298/element-status',
         'game': 'https://draft.premierleague.com/api/game',
-        'public': 'https://draft.premierleague.com/api/entry/{}/public',
+        'live': 'https://draft.premierleague.com/api/event/{}/live',
         'entry': 'https://draft.premierleague.com/api/entry/{}/event/{}'
     }
 
@@ -297,21 +297,35 @@ class Utils:
 
     def get_scores(self):
         matches_df = self.get_fixtures()
+        gameweek = self.current_gw()
+
+        url = self.api["live"].format(self.current_gw())
+        live_data = self.session.get(url).json()
         
         for row in matches_df.itertuples():
-            url = self.api["public"].format(row.entry_id_home)
+            # get home team points
+            url = self.api["entry"].format(row.entry_id_home, gameweek)
             r = self.session.get(url).json()
-
-            home_public_df = pd.json_normalize(r["entry"])
-            for pub_row in home_public_df.itertuples():
-                matches_df._set_value(row.Index, 'home_score', pub_row.event_points)
-
-            url = self.api["public"].format(row.entry_id_away)
-            r = self.session.get(url).json()
+            picks_home_df = pd.json_normalize(r["picks"])
             
-            away_public_df = pd.json_normalize(r["entry"])
-            for pub_row in away_public_df.itertuples():
-                matches_df._set_value(row.Index, 'away_score', pub_row.event_points)
+            home_points = 0
+            for pick in picks_home_df.itertuples():
+                if pick.position <= 11:
+                    home_points += live_data["elements"][str(pick.element)]["stats"]["total_points"]
+            
+            matches_df._set_value(row.Index, 'home_score', home_points)
+
+            # get away team points
+            url = self.api["entry"].format(row.entry_id_away, gameweek)
+            r = self.session.get(url).json()
+            picks_away_df = pd.json_normalize(r["picks"])
+
+            away_points = 0
+            for pick in picks_away_df.itertuples():
+                if pick.position <= 11:
+                    away_points += live_data["elements"][str(pick.element)]["stats"]["total_points"]
+
+            matches_df._set_value(row.Index, 'away_score', away_points)
         
         return matches_df
 
