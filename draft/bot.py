@@ -1,3 +1,4 @@
+from ast import match_case
 import io
 from fplutils import Utils
 from teamImg import TeamImg
@@ -116,7 +117,17 @@ async def scores(ctx, gameweek: Option(int, description="Gameweek to get scores 
     response = ""
     for row in scores_df.itertuples():
         home_spaces = home_str_len - len(row.home_player)
-        response += "```" + row.home_player + home_spaces*" " + "     " + str(row.home_score) + " - " + str(row.away_score) + "     " + row.away_player + "```"
+        match len(str(row.home_score)):
+            case 1: home_score_str = "      " + str(row.home_score)
+            case 2: home_score_str = "     "  + str(row.home_score)
+            case 3: home_score_str = "    " + str(row.home_score)
+
+        match len(str(row.away_score)):
+            case 1: away_score_str = str(row.away_score) + "      "
+            case 2: away_score_str = str(row.away_score) + "     "
+            case 3: away_score_str = str(row.away_score) + "    "
+
+        response += "```" + row.home_player + home_spaces*" " +  home_score_str + " - " + away_score_str + row.away_player + "```"
     embed = Embed(title="Live scores for GW"+str(gameweek), description=response)
     await ctx.respond(embed=embed)
 
