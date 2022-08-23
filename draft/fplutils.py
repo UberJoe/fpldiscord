@@ -314,8 +314,11 @@ class Utils:
                 picks_home_df = pd.json_normalize(r["picks"])
                 
                 for pick in picks_home_df.itertuples():
-                    if pick.position <= 11:
-                        home_points += live_data["elements"][str(pick.element)]["stats"]["total_points"]
+                    try:
+                        if pick.position <= 11:
+                            home_points += live_data["elements"][str(pick.element)]["stats"]["total_points"]
+                    except Exception:
+                        pass
             except Exception:
                 pass
 
@@ -327,8 +330,11 @@ class Utils:
                 picks_away_df = pd.json_normalize(r["picks"])
 
                 for pick in picks_away_df.itertuples():
-                    if pick.position <= 11:
-                        away_points += live_data["elements"][str(pick.element)]["stats"]["total_points"]
+                    try:
+                        if pick.position <= 11:
+                            away_points += live_data["elements"][str(pick.element)]["stats"]["total_points"]
+                    except Exception:
+                        pass
             except Exception:
                 pass
 
