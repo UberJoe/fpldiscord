@@ -32,7 +32,9 @@ async def owner(ctx, *, player_name: Option(str, description="Player's name")):
             response += row.first_name + ' ' + row.second_name + ' is owned by: ' + row.team_x + '\n'
         else:
             response += row.first_name + ' ' + row.second_name + ' is a free agent!\n'
-    await ctx.respond(response)
+
+    embed = Embed(title=response)
+    await ctx.respond(embed=embed)
 
 @bot.command(description="Responds with the H2H fixtures for current or specified GW")
 async def fixtures(ctx, gameweek: Option(int, description="GW to show the fixtures", max_value=38, min_value=1) = u.current_gw()):
@@ -67,7 +69,10 @@ async def teamlist(ctx, owner: Option(str, description="Team owner's first name"
     response += "\n"
     for row in team_att_df.itertuples():
         response += "**" + row.web_name + "**" + " (" + row.short_name + ")\n"
-    await ctx.respond(response)
+
+    embed = Embed(title=owner+"'s Team list", description=response)
+    
+    await ctx.respond(embed=embed)
 
 @bot.command(description="Responds with this week's waivers")
 async def waivers(ctx, gameweek: Option(int, description="GW to show waivers of (0 for all waivers)", max_value=38, min_value=0) = u.current_gw()):
