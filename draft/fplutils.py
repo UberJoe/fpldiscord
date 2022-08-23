@@ -325,7 +325,10 @@ class Utils:
             away_points = 0
             for pick in picks_away_df.itertuples():
                 if pick.position <= 11:
-                    away_points += live_data["elements"][str(pick.element)]["stats"]["total_points"]
+                    try:
+                        away_points += live_data["elements"][str(pick.element)]["stats"]["total_points"]
+                    except Exception:
+                        pass
 
             matches_df._set_value(row.Index, 'away_score', away_points)
         
