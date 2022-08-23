@@ -108,8 +108,8 @@ async def team(ctx, owner: Option(str, description="Team owner's first name")):
         await ctx.respond(owner + "'s team", file=File(fp=image_binary, filename='team_image.png'))
 
 @bot.command(description="Get the scores of the current gameweek (live). Specify GW for previous weeks' results.")
-async def scores(ctx):
-    scores_df = u.get_scores()
+async def scores(ctx, gameweek: Option(int, description="Gameweek to get scores for", max_value=38, min_value=1) = 0):
+    scores_df, gameweek = u.get_scores(gameweek)
 
     home_str_len = scores_df["home_player"].str.len().max()
 
@@ -117,7 +117,7 @@ async def scores(ctx):
     for row in scores_df.itertuples():
         home_spaces = home_str_len - len(row.home_player)
         response += "```" + row.home_player + home_spaces*" " + "     " + str(row.home_score) + " - " + str(row.away_score) + "     " + row.away_player + "```"
-    embed = Embed(title="Live scores for this gameweek", description=response)
+    embed = Embed(title="Live scores for GW"+str(gameweek), description=response)
     await ctx.respond(embed=embed)
 
 bot.run(os.getenv('TOKEN'))

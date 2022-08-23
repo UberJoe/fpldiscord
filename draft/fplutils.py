@@ -297,45 +297,45 @@ class Utils:
 
         return transactions_df
 
-    def get_scores(self):
-        gameweek = self.current_gw()
+    def get_scores(self, gameweek=0):
+        if gameweek == 0:
+            gameweek = self.current_gw()
         matches_df, gameweek = self.get_fixtures(gameweek)
 
         url = self.api["live"].format(gameweek)
         live_data = self.session.get(url).json()
         
         for row in matches_df.itertuples():
-            # get home team points
-            url = self.api["entry"].format(row.entry_id_home, gameweek)
-            r = self.session.get(url).json()
-            picks_home_df = pd.json_normalize(r["picks"])
-            
             home_points = 0
-            for pick in picks_home_df.itertuples():
-                if pick.position <= 11:
-                    try:
+            try:
+                # get home team points
+                url = self.api["entry"].format(row.entry_id_home, gameweek)
+                r = self.session.get(url).json()
+                picks_home_df = pd.json_normalize(r["picks"])
+                
+                for pick in picks_home_df.itertuples():
+                    if pick.position <= 11:
                         home_points += live_data["elements"][str(pick.element)]["stats"]["total_points"]
-                    except Exception:
-                        pass
-            
-            matches_df._set_value(row.Index, 'home_score', home_points)
-
-            # get away team points
-            url = self.api["entry"].format(row.entry_id_away, gameweek)
-            r = self.session.get(url).json()
-            picks_away_df = pd.json_normalize(r["picks"])
+            except Exception:
+                pass
 
             away_points = 0
-            for pick in picks_away_df.itertuples():
-                if pick.position <= 11:
-                    try:
-                        away_points += live_data["elements"][str(pick.element)]["stats"]["total_points"]
-                    except Exception:
-                        pass
+            try:
+                # get away team points
+                url = self.api["entry"].format(row.entry_id_away, gameweek)
+                r = self.session.get(url).json()
+                picks_away_df = pd.json_normalize(r["picks"])
 
+                for pick in picks_away_df.itertuples():
+                    if pick.position <= 11:
+                        away_points += live_data["elements"][str(pick.element)]["stats"]["total_points"]
+            except Exception:
+                pass
+
+            matches_df._set_value(row.Index, 'home_score', home_points)
             matches_df._set_value(row.Index, 'away_score', away_points)
         
-        return matches_df
+        return matches_df, gameweek
 
     def current_gw(self):
         self.update_data()
