@@ -37,8 +37,8 @@ async def owner(ctx, *, player_name: Option(str, description="Player's name")):
     await ctx.respond(embed=embed)
 
 @bot.command(description="Responds with the H2H fixtures for current or specified GW")
-async def fixtures(ctx, gameweek: Option(int, description="GW to show the fixtures", max_value=38, min_value=1) = u.current_gw()):
-    matches_df = u.get_fixtures(gameweek)
+async def fixtures(ctx, gameweek: Option(int, description="GW to show the fixtures", max_value=38, min_value=1) = 0):
+    matches_df, gameweek = u.get_fixtures(gameweek)
 
     response = ""
     spaces = matches_df["home_player"].str.len().max()

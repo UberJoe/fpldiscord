@@ -222,6 +222,8 @@ class Utils:
     def get_fixtures(self, gw=0):
         if gw == 0:
             gw = self.current_gw()
+            if self.gw_info["current_event_finished"] == True:
+                gw += 1
 
         matches_df = self.get_data('matches')
         league_entry_df = self.get_data('league_entries')
@@ -258,7 +260,7 @@ class Utils:
 
         matches_df = matches_df.loc[matches_df['match'] == gw]
 
-        return matches_df
+        return matches_df, gw
 
     def get_transactions(self, gw=0):
         transactions_df = self.get_data('transactions')
@@ -296,10 +298,10 @@ class Utils:
         return transactions_df
 
     def get_scores(self):
-        matches_df = self.get_fixtures()
         gameweek = self.current_gw()
+        matches_df, gameweek = self.get_fixtures(gameweek)
 
-        url = self.api["live"].format(self.current_gw())
+        url = self.api["live"].format(gameweek)
         live_data = self.session.get(url).json()
         
         for row in matches_df.itertuples():
@@ -330,16 +332,8 @@ class Utils:
         return matches_df
 
     def current_gw(self):
-        num_gameweeks = 1
-        if len(self.data) != 0:
-            matches_df = self.get_data('matches')     
-            num_gameweeks = matches_df[matches_df['finished'] == True]['event'].max()
-            num_gameweeks += 1
-            
-            if math.isnan(num_gameweeks):
-                num_gameweeks = 1
-
-        return num_gameweeks
+        self.update_data()
+        return self.gw_info["current_event"]
 
     def get_entries(self):
         self.get_data('details')
