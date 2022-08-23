@@ -18,8 +18,6 @@ else:
 img = TeamImg()
 u = Utils()
 
-fixtures = bot.create_group("fixtures", "retrieve fixtures")
-
 @bot.command(description="Finds the owner for the specified player")
 async def owner(ctx, *, player_name: discord.Option(str, description="Player's name")):
     player_df = u.get_player_attr(player_name, "team_x")
@@ -36,23 +34,17 @@ async def owner(ctx, *, player_name: discord.Option(str, description="Player's n
             response += row.first_name + ' ' + row.second_name + ' is a free agent!\n'
     await ctx.respond(response)
 
-@fixtures.command(description="Responds with the H2H fixtures for the coming GW")
-async def this_week(ctx):
-    matches_df = u.get_fixtures()
-
-    response = ""
-    for row in matches_df.itertuples():
-        response += row.home_player + " vs " + row.away_player + "\n"
-    await ctx.respond(response)
-
-@fixtures.command(name='gw', description="Responds with the H2H fixtures for the specified GW")
-async def gw_subcommand(ctx, gameweek: discord.Option(int, description="Gameweek number")):
+@bot.command(description="Responds with the H2H fixtures for current or specified GW")
+async def fixtures(ctx, gameweek: discord.Option(int, description="GW to show the fixtures", max_value=38, min_value=1) = u.current_gw()):
     matches_df = u.get_fixtures(gameweek)
 
     response = ""
+    spaces = matches_df["home_player"].str.len().max()
     for row in matches_df.itertuples():
-        response += row.home_player + " vs " + row.away_player + "\n"
-    await ctx.respond(response)
+        home_spaces = spaces - len(row.home_player)
+        response += "```" + row.home_player + home_spaces*" " + "   vs   " + row.away_player + "```"
+    embed = discord.Embed(title="Fixtures for GW" + str(gameweek), description=response)
+    await ctx.respond(embed=embed)
 
 @bot.command(description="Responds with the team of the specified owner as a list")
 async def teamlist(ctx, owner: discord.Option(str, description="Team owner's first name")):
