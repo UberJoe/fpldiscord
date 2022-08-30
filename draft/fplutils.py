@@ -343,8 +343,13 @@ class Utils:
         
         return matches_df, gameweek
 
-    def current_gw(self):
+    def current_gw(self, next_if_finished=False):
         self.update_data()
+
+        if next_if_finished == True:
+            if self.gw_info['current_event_finished'] == True:
+                return self.gw_info["next_event"]
+
         return self.gw_info["current_event"]
 
     def get_entries(self):

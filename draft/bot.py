@@ -76,10 +76,7 @@ async def teamlist(ctx, owner: Option(str, description="Team owner's first name"
     await ctx.respond(embed=embed)
 
 @bot.command(description="Responds with this week's waivers")
-async def waivers(ctx, gameweek: Option(int, description="GW to show waivers of (0 for all waivers)", max_value=38, min_value=0) = u.current_gw()):
-    this_gw = u.current_gw()
-    if gameweek > this_gw:
-        gameweek = this_gw
+async def waivers(ctx, gameweek: Option(int, description="GW to show waivers of (0 for all waivers)", max_value=38, min_value=0) = u.current_gw(True)):
     transactions_df = u.get_transactions(gameweek)
     if transactions_df.empty:
         await ctx.respond("Couldn't find any waivers for GW" + str(gameweek))
