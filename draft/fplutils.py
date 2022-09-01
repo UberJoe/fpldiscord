@@ -208,6 +208,20 @@ class Utils:
         ]]
         return selected_players_df
 
+    def get_player_attr_id(self, player_id: int, attr: str):
+        players_df = self.get_team_players()
+
+        if attr not in players_df.columns:
+            raise ValueError(f'Attribute \'{attr}\' is not available for players')
+        
+        selected_players_df = players_df.loc[players_df['element'] == player_id]
+        selected_players_df = selected_players_df[[
+            'first_name',
+            'second_name',
+            attr
+        ]]
+        return selected_players_df
+
     def get_team(self, owner: str, pos: str=None):
         players_df = self.get_team_players()
         team_df = players_df.loc[players_df['team_x'].str.lower() == owner.lower()]

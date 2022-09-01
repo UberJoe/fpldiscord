@@ -128,4 +128,30 @@ async def scores(ctx, gameweek: Option(int, description="Gameweek to get scores 
     embed = Embed(title="Live scores for GW"+str(gameweek), description=response)
     await ctx.respond(embed=embed)
 
+@bot.command(description="Gets the current total goals scored for each bettor's selections")
+async def bet(ctx):
+    bettors = {
+        "Jack" : ["alexander-arnold", "coutinho", "cancelo", "koulibaly"], 
+        "Joe" : ["diogo jota", 146, "neves", "laporte"], 
+        "Harry" : ["fred", "joelinton", "cash", "keita"], 
+        "Steve" : ["mount", "rodri", "sinisterra", "coady"], 
+        "Hari" : ["van dijk", "grealish", "smith rowe", "watkins"], 
+        "Tom" : ["cancelo", "diogo jota", "mount", "coady"]
+    }
+
+    response = ""
+    
+    for bettor, team in bettors.items():
+        goals = 0
+        for player in team:
+            if type(player) is int:
+                goals_df = u.get_player_attr_id(player, "goals_scored")
+            else:
+                goals_df = u.get_player_attr(player, "goals_scored")
+            goals += int(goals_df["goals_scored"])
+        response += "```" + bettor + ": " + str(goals) + "```"
+
+    embed = Embed(title="Current goal totals for the bet", description=response)
+    await ctx.respond(embed=embed)
+
 bot.run(os.getenv('TOKEN'))
