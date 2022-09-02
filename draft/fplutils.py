@@ -23,7 +23,8 @@ class Utils:
         self.session = requests.session()
         self.update_time = datetime.min
         self.gw_info = self.get_gw_info()
-        self.data = self.update_data()
+        self.data = {}
+        self.update_data()
 
     def login(self):
         url = 'https://users.premierleague.com/accounts/login/'
@@ -48,16 +49,15 @@ class Utils:
                 self.gw_info["waivers_processed"] != gw_info["waivers_processed"]
             ):
                 print('Calling for data from FPL API')
-                data['transactions'] = self.session.get(self.api['transactions']).json()
-                data['elements'] = self.session.get(self.api['elements']).json()
-                data['details'] = self.session.get(self.api['details']).json()
-                data['element_status'] = self.session.get(self.api['element_status']).json()
-                self.gw = gw_info
+                self.data['transactions'] = self.session.get(self.api['transactions']).json()
+                self.data['elements'] = self.session.get(self.api['elements']).json()
+                self.data['details'] = self.session.get(self.api['details']).json()
+                self.data['element_status'] = self.session.get(self.api['element_status']).json()
+                self.gw_info = gw_info
                 self.update_time = now
-        return data
 
     def get_waiver_time(self, gw=0):
-        if self.data is None:
+        if not self.data:
             self.update_data()
         if gw == 0:
             gw = self.current_gw() - 1
