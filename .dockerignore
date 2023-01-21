@@ -1,0 +1,8 @@
+# flyctl launch added from .gitignore
+**\draft\test.py
+**\draft\__pycache__
+**\Lib
+**\Scripts
+**\pyvenv.cfg
+**\config.env
+fly.toml
