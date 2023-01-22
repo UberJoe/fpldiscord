@@ -1,7 +1,6 @@
-from ast import match_case
 import io
 from fplutils import Utils
-# from teamImg import TeamImg
+from teamImg import TeamImg
 import discord
 from discord import Option, File, Embed
 import os
@@ -16,7 +15,7 @@ if os.getenv('DEBUG_GUILDS') is not None:
 else:
     bot = discord.Bot()
 
-# img = TeamImg()
+img = TeamImg()
 u = Utils()
 
 @bot.command(description="Finds the owner for the specified player")
@@ -96,14 +95,14 @@ async def waivers(ctx, gameweek: Option(int, description="GW to show waivers of 
 async def dave(ctx):
     await ctx.respond("fuck you Dave")
 
-# @bot.command(description="Responds with an image of the team owned by the specified owner")
-# async def team(ctx, owner: Option(str, description="Team owner's first name")):
-#     team_df = u.get_team(owner)
-#     team_image = img.main(team_df)
-#     with io.BytesIO() as image_binary:
-#         team_image.save(image_binary, 'PNG')
-#         image_binary.seek(0)
-#         await ctx.respond(owner + "'s team", file=File(fp=image_binary, filename='team_image.png'))
+@bot.command(description="Responds with an image of the team owned by the specified owner")
+async def team(ctx, owner: Option(str, description="Team owner's first name")):
+    team_df = u.get_team(owner)
+    team_image = img.main(team_df)
+    with io.BytesIO() as image_binary:
+        team_image.save(image_binary, 'PNG')
+        image_binary.seek(0)
+        await ctx.respond(owner + "'s team", file=File(fp=image_binary, filename='team_image.png'))
 
 @bot.command(description="Get the scores of the current gameweek (live). Specify GW for previous weeks' results.")
 async def scores(ctx, gameweek: Option(int, description="Gameweek to get scores for", max_value=38, min_value=1) = 0):

@@ -1,13 +1,12 @@
+import os
 from PIL import Image, ImageDraw, ImageFont, ImageColor
-from cairosvg import svg2png
 import requests
 from io import BytesIO
-import os
 
 class TeamImg:
 
     image_urls = {
-        'pitch': 'https://draft.premierleague.com/static/media/pitch-default.dab51b01.svg',
+        'pitch': os.path.join(os.path.dirname(__file__), "img/pitch.png"),
         'shirt': "https://draft.premierleague.com/img/shirts/standard/shirt_{0}-66.png"
     }
 
@@ -36,11 +35,8 @@ class TeamImg:
 
     def __init__(self):
         self.session = requests.session()
-        pitch_svg = self.session.get(self.image_urls['pitch'])
 
-        pitch_png = BytesIO()
-        svg2png(bytestring=pitch_svg.content, write_to=pitch_png, scale=0.44)
-        self.background = Image.open(pitch_png)
+        self.background = Image.open(self.image_urls["pitch"])
 
     def main(self, team_df):
         background = self.create_team_image(self.background, team_df)
