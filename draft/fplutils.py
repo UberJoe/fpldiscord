@@ -60,7 +60,7 @@ class Utils:
         if not self.data:
             self.update_data()
         if gw == 0:
-            gw = self.current_gw() - 1
+            gw = self.current_gw()
         
         ts = self.data['elements']['events']['data'][gw]['waivers_time']
         return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")
