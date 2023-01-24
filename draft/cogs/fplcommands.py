@@ -99,6 +99,9 @@ class FplCommands(commands.Cog):
                 response += " :white_check_mark:\n"
             else:
                 response += " :x:\n"
+
+        response += "```The next waiver deadline is: " + str(self.u.get_waiver_time()) + "```"
+        
         embed = Embed(title="Waivers in GW" + str(gameweek), description=response)
         await ctx.respond(embed=embed)
 
