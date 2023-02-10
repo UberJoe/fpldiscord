@@ -61,6 +61,9 @@ class Utils:
             self.update_data()
         if gw == 0:
             gw = self.current_gw()
+            gw_info = self.get_gw_info()
+            if (gw_info["waivers_processed"] == True):
+                gw = self.current_gw(True)
         
         ts = self.data['elements']['events']['data'][gw]['waivers_time']
         return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")

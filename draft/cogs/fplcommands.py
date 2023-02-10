@@ -86,6 +86,9 @@ class FplCommands(commands.Cog):
     async def waivers(self, ctx, gameweek: Option(int, description="GW to show waivers of (0 for all waivers)", max_value=38, min_value=0) = 0):
         if (gameweek == 0):
             gameweek = self.u.current_gw()
+            gw_info = self.u.get_gw_info()
+            if (gw_info["waivers_processed"] == True):
+                gameweek = self.u.current_gw(True)
         
         transactions_df = self.u.get_transactions(gameweek)
         if transactions_df.empty:
