@@ -1,7 +1,7 @@
 draft/test.py
-draft/__pycache__
-venv
+__pycache__/
+venv/
 pyvenv.cfg
 config.env
 fly.toml
-tmp
+tmp/
