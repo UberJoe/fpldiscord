@@ -24,11 +24,11 @@ class WaiversTasks(commands.Cog):
         waiver_time = datetime.datetime.strptime(waiver_time, '%Y-%m-%d %H:%M:%S')
 
         if (waiver_time.day == datetime.datetime.today().day):
-            today_msg = "```" + "Waivers are happening today at: " + str(waiver_time) + "```"
+            today_msg = "Waivers are happening today at: " + str(waiver_time)
             await self.notify(today_msg)
 
             await asyncio.sleep(await self.seconds_until((waiver_time.hour - 1) ,waiver_time.minute))  # Will stay here until your clock says 11:58
-            hour_msg = "```" + "Waivers are in ONE HOUR at: " + str(waiver_time) + "```"
+            hour_msg = "Waivers are in ONE HOUR at: " + str(waiver_time)
             await self.notify(hour_msg)
             await asyncio.sleep(60)  # Practical solution to ensure that the print isn't spammed as long as it is 11:58
 
