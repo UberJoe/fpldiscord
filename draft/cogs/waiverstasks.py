@@ -6,9 +6,6 @@ from dotenv import load_dotenv
 import discord
 from discord.ext import tasks, commands
 from fplutils import Utils
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
-import logging
 
 dotenv_path = 'config.env'
 load_dotenv(dotenv_path=dotenv_path)
@@ -24,7 +21,6 @@ class WaiversTasks(commands.Cog):
     @tasks.loop(hours=24)
     async def waiver_reminder(self):
         waiver_time = self.u.get_waiver_time()
-        waiver_time = "2023-02-11 08:47:00"
         waiver_time = datetime.datetime.strptime(waiver_time, '%Y-%m-%d %H:%M:%S')
 
         if (waiver_time.day == datetime.datetime.today().day):
@@ -38,7 +34,7 @@ class WaiversTasks(commands.Cog):
 
     @waiver_reminder.before_loop
     async def wait_until(self):
-        await asyncio.sleep(await self.seconds_until(7,43))
+        await asyncio.sleep(await self.seconds_until(6,0))
 
     async def notify(self, msg):
         channel = await self.client.fetch_channel(self.notifications_channel)
