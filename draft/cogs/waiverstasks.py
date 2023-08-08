@@ -5,7 +5,7 @@ import asyncio
 from dotenv import load_dotenv
 import discord
 from discord.ext import tasks, commands
-from fplcommands import Utils
+from fplutils import Utils
 
 dotenv_path = 'config.env'
 load_dotenv(dotenv_path=dotenv_path)

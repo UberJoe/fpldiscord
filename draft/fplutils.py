@@ -10,10 +10,10 @@ from datetime import datetime, timedelta
 class Utils:
 
     api = {
-        'transactions': 'https://draft.premierleague.com/api/draft/league/36298/transactions',
+        'transactions': 'https://draft.premierleague.com/api/draft/league/3502/transactions',
         'elements': 'https://draft.premierleague.com/api/bootstrap-static',
-        'details': 'https://draft.premierleague.com/api/league/36298/details',
-        'element_status': 'https://draft.premierleague.com/api/league/36298/element-status',
+        'details': 'https://draft.premierleague.com/api/league/3502/details',
+        'element_status': 'https://draft.premierleague.com/api/league/3502/element-status',
         'game': 'https://draft.premierleague.com/api/game',
         'live': 'https://draft.premierleague.com/api/event/{}/live',
         'entry': 'https://draft.premierleague.com/api/entry/{}/event/{}'
