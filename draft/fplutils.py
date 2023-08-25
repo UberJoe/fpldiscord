@@ -4,7 +4,7 @@ import json
 import pandas as pd
 import math
 import unidecode
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 class Utils:
@@ -66,7 +66,7 @@ class Utils:
                 gw = self.current_gw(True)
         
         ts = self.data['elements']['events']['data'][gw]['waivers_time']
-        return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")
+        return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
 
 
     def get_data(self, df_name):

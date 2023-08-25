@@ -103,14 +103,17 @@ class FplCommands(commands.Cog):
             else:
                 response += " :x:\n"
 
-        response += "```The next waiver deadline is: " + str(self.u.get_waiver_time()) + "```"
+        response += "\nThe next waiver deadline is: <t:" + str(int(self.u.get_waiver_time().timestamp())) + ":F>"
         
         embed = Embed(title="Waivers in GW" + str(gameweek), description=response)
         await ctx.respond(embed=embed)
 
 
     async def dave(self, ctx):
-        await ctx.respond("fuck you Dave")
+        if (str(ctx.user) == "bigsamspintofwine#0"):
+            await ctx.respond("fuck you Steve")
+        else:
+            await ctx.respond("fuck you Dave")
 
 
     # @bot.command(description="Responds with an image of the team owned by the specified owner")
@@ -151,25 +154,42 @@ class FplCommands(commands.Cog):
     async def bet(self, ctx):
         await ctx.defer()
         bettors = {
-            "Jack" : ["alexander-arnold", "coutinho", "cancelo", "koulibaly"], 
-            "Joe" : ["diogo jota", 146, "neves", "laporte"], 
-            "Harry" : ["fred", "joelinton", "cash", "keita"], 
-            "Steve" : ["mount", "rodri", "sinisterra", "coady"], 
-            "Hari" : ["van dijk", "grealish", "smith rowe", "watkins"], 
-            "Tom" : ["cancelo", "diogo jota", "mount", "coady"]
+            "Harry" : [
+                {"id": 206, "name": "Reece James"}, {"id": 402, "name": "Almiron"}, 
+                {"id": 342, "name": "Ake"}, {"id": 506, "name": "Pedro Porro"}
+            ], 
+            "Joe" : [
+                {"id": 108, "name": "Mbeumo"}, {"id": 349, "name": "De Bruyne"}, 
+                {"id": 450, "name": "Brennan Johnson"}, {"id": 85, "name": "Solanke"}
+            ], 
+            "Jack" : [
+                {"id": 526, "name": "Bowen"}, {"id": 55, "name": "J Ramsey"}, 
+                {"id": 140, "name": "March"}, {"id": 26, "name": "Trossard"}
+            ], 
+            "Henry" : [
+                {"id": 14, "name": "Odegaard"}, {"id": 406, "name": "Guimarães"}, 
+                {"id": 304, "name": "Mac Allister"}, {"id": 365, "name": "Rodri"}
+            ],
+            "Steve" : [
+                {"id": 599, "name": "Diaby"}, {"id": 603, "name": "Barnes"}, 
+                {"id": 119, "name": "Wissa"}, {"id": 267, "name": "Andreas"}
+            ], 
+            "Hari" : [
+                {"id": 354, "name": "Grealish"}, {"id": 504, "name": "Maddison"}, 
+                {"id": 132, "name": "Ferguson"}, {"id": 290, "name": "Trent"}
+            ]
         }
 
         response = ""
         
         for bettor, team in bettors.items():
             goals = 0
+            team_str = ""
             for player in team:
-                if type(player) is int:
-                    goals_df = self.u.get_player_attr_id(player, "goals_scored")
-                else:
-                    goals_df = self.u.get_player_attr(player, "goals_scored")
-                goals += int(goals_df["goals_scored"])
-            response += "```" + bettor + ": " + str(goals) + "```"
+                goals_df = self.u.get_player_attr_id(player["id"], "goals_scored")
+                goals += goals_df["goals_scored"].item()
+                team_str += "\n " + player["name"] + " (" + str(goals_df["goals_scored"].item()) + ")"
+            response += "```" + bettor + ": " + str(goals) + team_str + "```"
 
         embed = Embed(title="Current goal totals for the bet", description=response)
         await ctx.followup.send(embed=embed)
