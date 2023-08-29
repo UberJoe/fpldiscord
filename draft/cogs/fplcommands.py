@@ -5,7 +5,6 @@ import discord
 from discord import Option, File, Embed
 from discord.ext import commands
 from dotenv import load_dotenv
-import pandas as pd
 
 dotenv_path = 'config.env'
 load_dotenv(dotenv_path=dotenv_path)
@@ -26,6 +25,8 @@ class FplCommands(commands.Cog):
         self.client.application_command(name="team", description="Responds with an image of the team owned by the specified owner", cls=discord.SlashCommand)(self.team)
         self.client.application_command(name="scores", description="Get the scores of the current gameweek (live). Specify GW for previous weeks", cls=discord.SlashCommand)(self.scores)
         self.client.application_command(name="bet", description="Gets the current total goals scored for each bettor's selections", cls=discord.SlashCommand)(self.bet)
+        self.client.application_command(name="update", description="Updates the data from FPL API", cls=discord.SlashCommand)(self.update)
+
 
     async def owner(self, ctx, *, player_name: Option(str, description="Player's name")):
         player_df = self.u.get_player_attr(player_name, "team_x")
@@ -146,6 +147,10 @@ class FplCommands(commands.Cog):
                 case 3: away_score_str = str(row.away_score) + "    "
 
             response += "```" + row.home_player + home_spaces*" " +  home_score_str + " - " + away_score_str + row.away_player + "```"
+        
+        if (str(ctx.user) == "bigsamspintofwine#0"):
+            response += "\nFuck you Steve, I hope you're losing"
+
         embed = Embed(title="Live scores for GW"+str(gameweek), description=response)
         await ctx.respond(embed=embed)
 
@@ -193,6 +198,11 @@ class FplCommands(commands.Cog):
 
         embed = Embed(title="Current goal totals for the bet", description=response)
         await ctx.followup.send(embed=embed)
+
+    async def update(self, ctx):
+        self.u.update_data(True)
+
+        await ctx.respond("Data updated")
 
 
 def setup(client):

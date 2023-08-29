@@ -19,12 +19,26 @@ class Utils:
         'entry': 'https://draft.premierleague.com/api/entry/{}/event/{}'
     }
 
+    _instance = None
+    _initialized = False
+
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            # Initialize the external API connection here
+        return cls._instance
+
+
     def __init__(self):
-        self.session = requests.session()
-        self.update_time = datetime.min
-        self.gw_info = self.get_gw_info()
-        self.data = {}
-        self.update_data()
+        if not self._initialized:
+            self.session = requests.session()
+            self.update_time = datetime.min
+            self.gw_info = self.get_gw_info()
+            self.data = {}
+            self.update_data()
+            self._initialized = True
+
 
     def login(self):
         url = 'https://users.premierleague.com/accounts/login/'
@@ -36,7 +50,7 @@ class Utils:
         }
         self.session.post(url, data=payload)
 
-    def update_data(self):
+    def update_data(self, force=False):
         now = datetime.now()
         gw_info = self.get_gw_info()
 
@@ -47,6 +61,8 @@ class Utils:
                 self.gw_info["current_event"] != gw_info["current_event"]
                 or 
                 self.gw_info["waivers_processed"] != gw_info["waivers_processed"]
+                or 
+                force == True
             ):
                 print('Calling for data from FPL API')
                 self.data['transactions'] = self.session.get(self.api['transactions']).json()
