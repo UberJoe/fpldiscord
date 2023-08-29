@@ -20,14 +20,14 @@ class TeamImg:
         "Crystal Palace"    :   "31",
         "Everton"           :   "11",
         "Fulham"            :   "54",
-        "Leeds"             :   "2",
-        "Leicester"         :   "13",
+        "Luton"             :   "102",
+        "Burnley"           :   "90",
         "Liverpool"         :   "14",
         "Man City"          :   "43",
         "Man Utd"           :   "1",
         "Newcastle"         :   "4",
         "Nott'm Forest"     :   "17",
-        "Southampton"       :   "20",
+        "Sheffield Utd"     :   "49",
         "Spurs"             :   "6",
         "West Ham"          :   "21",
         "Wolves"            :   "39"
@@ -36,7 +36,7 @@ class TeamImg:
     def __init__(self):
         self.session = requests.session()
 
-        self.background = Image.open(self.image_urls["pitch"])
+        self.background = Image.open(self.image_urls["pitch"]).convert("RGBA")
 
     def main(self, team_df):
         background = self.create_team_image(self.background, team_df)
@@ -72,7 +72,7 @@ class TeamImg:
             url = self.image_urls['shirt']
             r = self.session.get(url.format(team_num))
             b_image = BytesIO(r.content)
-            shirt = Image.open(b_image)
+            shirt = Image.open(b_image).convert("RGBA")
             
             offset = (player_place, height)
             background.paste(shirt, offset, shirt)
