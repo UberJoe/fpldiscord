@@ -1,6 +1,9 @@
 import discord 
 from dotenv import load_dotenv
 import os
+import sys
+
+sys.stderr = sys.stdout
 
 dotenv_path = 'config.env'
 load_dotenv(dotenv_path=dotenv_path)
