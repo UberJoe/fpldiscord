@@ -375,6 +375,50 @@ class Utils:
             matches_df._set_value(row.Index, 'away_score', away_points)
         
         return matches_df, gameweek
+    
+    def get_overview(self, gameweek=0): 
+        if gameweek == 0:
+            gameweek = self.current_gw()
+
+        live_url = self.api["live"].format(gameweek)
+        bs_url = self.api["elements"]
+        bs_data = self.session.get(bs_url).json()
+
+        fixtures = self.session.get(live_url).json()["fixtures"]
+        element_status = self.session.get(self.api["element_status"]).json()["element_status"]
+        owners = self.session.get(self.api["details"]).json()["league_entries"]
+        teams = bs_data["teams"]
+        players = bs_data["elements"]
+
+        # mapping
+        team_id_to_name = {team["id"]: team["name"] for team in teams}
+        player_id_to_name = {player["id"]: player["web_name"] for player in players}
+        player_id_to_owner = {element["element"]: element["owner"] for element in element_status}
+        owner_id_to_name = {owner["entry_id"]: owner['player_first_name'] for owner in owners}
+
+        merged_fixtures = []
+        for fixture in fixtures:
+            merged_fixture = fixture.copy() 
+            merged_fixture["team_a"] = team_id_to_name.get(fixture["team_a"], "Unknown team ID: " + str(fixture["team_a"]))
+            merged_fixture["team_h"] = team_id_to_name.get(fixture["team_h"], "Unknown team ID: " + str(fixture["team_h"]))
+            for stat in merged_fixture["stats"]:
+                for team_stat in stat["h"]:
+                    player_id = team_stat["element"]
+                    team_stat["name"] = player_id_to_name.get(team_stat["element"], "Unknown player ID: " + str(team_stat["element"]))
+                    owner_id = player_id_to_owner.get(player_id)
+                    team_stat["owner"] = owner_id
+                    team_stat["owner_name"] = owner_id_to_name.get(owner_id)
+
+                for team_stat in stat["a"]:
+                    player_id = team_stat["element"]
+                    team_stat["name"] = player_id_to_name.get(team_stat["element"], "Unknown player ID: " + str(team_stat["element"]))
+                    owner_id = player_id_to_owner.get(player_id)
+                    team_stat["owner"] = owner_id
+                    team_stat["owner_name"] = owner_id_to_name.get(owner_id)
+
+            merged_fixtures.append(merged_fixture)
+
+        return merged_fixtures
 
     def current_gw(self, next_if_finished=False):
         self.update_data()

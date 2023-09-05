@@ -5,6 +5,8 @@ import discord
 from discord import Option, File, Embed
 from discord.ext import commands
 from dotenv import load_dotenv
+import json
+from datetime import datetime, timezone
 
 dotenv_path = 'config.env'
 load_dotenv(dotenv_path=dotenv_path)
@@ -26,6 +28,7 @@ class FplCommands(commands.Cog):
         self.client.application_command(name="scores", description="Get the scores of the current gameweek (live). Specify GW for previous weeks", cls=discord.SlashCommand)(self.scores)
         self.client.application_command(name="bet", description="Gets the current total goals scored for each bettor's selections", cls=discord.SlashCommand)(self.bet)
         self.client.application_command(name="update", description="Updates the data from FPL API", cls=discord.SlashCommand)(self.update)
+        self.client.application_command(name="overview", description="Responds with an overview of this week's fixtures", cls=discord.SlashCommand)(self.overview)
 
 
     async def owner(self, ctx, *, player_name: Option(str, description="Player's name")):
@@ -152,6 +155,57 @@ class FplCommands(commands.Cog):
             response += "\nFuck you Steve, I hope you're losing"
 
         embed = Embed(title="Live scores for GW"+str(gameweek), description=response)
+        await ctx.respond(embed=embed)
+
+    async def overview(self, ctx, matches: Option(str, description="Matches to get scores for", choices=["Today's matches", "Gameweek's matches", "Live matches"])): 
+        fixtures = self.u.get_overview()
+
+        embed = discord.Embed(
+            title="Gameweek fixture overview"
+        )
+
+        for fixture in fixtures:
+            kickoff_time = datetime.strptime(fixture["kickoff_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            
+            if matches == "Today's matches":
+                if kickoff_time.date() != datetime.now(timezone.utc).date():
+                    continue
+            elif matches == "Live matches":
+                if fixture["finished"] == True:
+                    continue
+
+            if kickoff_time.timestamp() > datetime.utcnow().timestamp():
+                continue
+
+            fixture_name = "**" + fixture["team_h"] + " " + str(fixture["team_h_score"]) + " - " + str(fixture["team_a_score"]) + " " + fixture["team_a"] + "**"
+
+            stat_text = ""
+            for stat in fixture["stats"]:
+                emojis = {
+                    "goals_scored": ":soccer: ",
+                    "assists": ":regional_indicator_a: ",
+                    "own_goals": "**OG** ",
+                    "red_cards": ":red_square: "
+                }
+
+                all_stats = stat.get("h", []) + stat.get("a", [])
+
+                for _stat in all_stats:
+                    if stat["s"] in ["penalties_saved", "penalties_missed", "yellow_cards", "saves", "bonus", "bps"]:
+                        continue
+                    stat_text += emojis[stat["s"]] + _stat["name"] + " (" + str(_stat["value"]) + ")"
+                    if _stat["owner_name"] is not None:
+                        stat_text += "**   " + _stat["owner_name"] + "**"
+                    stat_text += "\n"
+
+            stat_text += "-- -- -- -- -- -- -- -- -- --"
+
+            embed.add_field(
+                name=fixture_name,
+                value=stat_text,
+                inline=False
+            )
+
         await ctx.respond(embed=embed)
 
 
