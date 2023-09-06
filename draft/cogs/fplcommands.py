@@ -183,7 +183,7 @@ class FplCommands(commands.Cog):
             for stat in fixture["stats"]:
                 emojis = {
                     "goals_scored": ":soccer: ",
-                    "assists": ":regional_indicator_a: ",
+                    "assists": ":a: ",
                     "own_goals": "**OG** ",
                     "red_cards": ":red_square: "
                 }
