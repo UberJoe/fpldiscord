@@ -7,6 +7,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 import json
 from datetime import datetime, timezone
+from time import sleep
 
 dotenv_path = 'config.env'
 load_dotenv(dotenv_path=dotenv_path)
@@ -52,12 +53,20 @@ class FplCommands(commands.Cog):
     async def fixtures(self, ctx, gameweek: Option(int, description="GW to show the fixtures", max_value=38, min_value=1) = 0):
         matches_df, gameweek = self.u.get_fixtures(gameweek)
 
-        response = ""
+        embed = Embed(
+            title="Fixtures for GW" + str(gameweek)
+        )
+
         spaces = matches_df["home_player"].str.len().max()
         for row in matches_df.itertuples():
             home_spaces = spaces - len(row.home_player)
-            response += "```" + row.home_player + home_spaces*" " + "   vs   " + row.away_player + "```"
-        embed = Embed(title="Fixtures for GW" + str(gameweek), description=response)
+            response = "```" + row.home_player + home_spaces*" " + "   vs   " + row.away_player + "```"
+            embed.add_field(
+                name="",
+                value=response,
+                inline=False
+            )
+
         await ctx.respond(embed=embed)
 
 
@@ -69,47 +78,65 @@ class FplCommands(commands.Cog):
         team_mid_df = team_df.loc[team_df['plural_name'] == 'Midfielders']
         team_att_df = team_df.loc[team_df['plural_name'] == 'Forwards']
 
-        response = ""
-        for row in team_gk_df.itertuples():
-            response += "**" + row.web_name + "**" + " (" + row.short_name + ")\n"
-        response += "\n"
-        for row in team_def_df.itertuples():
-            response += "**" + row.web_name + "**" + " (" + row.short_name + ")\n"
-        response += "\n"
-        for row in team_mid_df.itertuples():
-            response += "**" + row.web_name + "**" + " (" + row.short_name + ")\n"
-        response += "\n"
-        for row in team_att_df.itertuples():
-            response += "**" + row.web_name + "**" + " (" + row.short_name + ")\n"
+        embed = Embed(
+            title=owner + "'s Team list"
+        )
 
-        embed = Embed(title=owner+"'s Team list", description=response)
+        gk_string = ""
+        for row in team_gk_df.itertuples():
+            gk_string += row.web_name + " (" + row.short_name + ")\n"
+        embed.add_field(name="GK", value=gk_string, inline=False)
+        
+        def_string = ""
+        for row in team_def_df.itertuples():
+            def_string += row.web_name + " (" + row.short_name + ")\n"
+        embed.add_field(name="DEF", value=def_string, inline=False)
+
+        mid_string = ""
+        for row in team_mid_df.itertuples():
+            mid_string += row.web_name + " (" + row.short_name + ")\n"
+        embed.add_field(name="MID", value=mid_string, inline=False)
+
+        att_string = ""
+        for row in team_att_df.itertuples():
+            att_string += row.web_name + " (" + row.short_name + ")\n"
+        embed.add_field(name="FWD", value=att_string, inline=False)
         
         await ctx.respond(embed=embed)
 
     
-    async def waivers(self, ctx, gameweek: Option(int, description="GW to show waivers of (0 for all waivers)", max_value=38, min_value=0) = 0):
+    async def waivers(self, ctx, gameweek: Option(int, description="Gameweek to show waivers from", max_value=38, min_value=0) = 0):
+
         if (gameweek == 0):
             gameweek = self.u.current_gw()
             gw_info = self.u.get_gw_info()
             if (gw_info["waivers_processed"] == True):
                 gameweek = self.u.current_gw(True)
+
+        embed = Embed(
+            title="Waivers in GW"+str(gameweek)
+        )
         
         transactions_df = self.u.get_transactions(gameweek)
         if transactions_df.empty:
             await ctx.respond("Couldn't find any waivers for GW" + str(gameweek))
             return
 
-        response = ""
         for row in transactions_df.itertuples():
-            response += row.short_name + ":  " + row.element_out + "  ->  " + row.element_in
             if row.result == 'a':
-                response += " :white_check_mark:\n"
-            else:
-                response += " :x:\n"
+                response = row.short_name + ":  " + row.element_out + "  ->  " + row.element_in + " :white_check_mark:"
+                embed.add_field(
+                    name="",
+                    value=response,
+                    inline=False
+                )
 
-        response += "\nThe next waiver deadline is: <t:" + str(int(self.u.get_waiver_time().timestamp())) + ":F>"
+        embed.add_field(
+            name="",
+            value="Next waivers: <t:" + str(int(self.u.get_waiver_time().timestamp())) + ":F>",
+            inline=False
+        )
         
-        embed = Embed(title="Waivers in GW" + str(gameweek), description=response)
         await ctx.respond(embed=embed)
 
 
@@ -133,10 +160,13 @@ class FplCommands(commands.Cog):
     # @bot.command(description="Get the scores of the current gameweek (live). Specify GW for previous weeks' results.")
     async def scores(self, ctx, gameweek: Option(int, description="Gameweek to get scores for", max_value=38, min_value=1) = 0):
         scores_df, gameweek = self.u.get_scores(gameweek)
+        
+        embed = Embed(
+            title="Live scores for GW"+str(gameweek)
+        )
 
         home_str_len = scores_df["home_player"].str.len().max()
 
-        response = ""
         for row in scores_df.itertuples():
             home_spaces = home_str_len - len(row.home_player)
             match len(str(row.home_score)):
@@ -149,18 +179,19 @@ class FplCommands(commands.Cog):
                 case 2: away_score_str = str(row.away_score) + "     "
                 case 3: away_score_str = str(row.away_score) + "    "
 
-            response += "```" + row.home_player + home_spaces*" " +  home_score_str + " - " + away_score_str + row.away_player + "```"
-        
-        if (str(ctx.user) == "bigsamspintofwine#0"):
-            response += "\nFuck you Steve, I hope you're losing"
+            response = "```" + row.home_player + home_spaces*" " +  home_score_str + " - " + away_score_str + row.away_player + "```"
+            embed.add_field(
+                name="",
+                value=response,
+                inline=False
+            )
 
-        embed = Embed(title="Live scores for GW"+str(gameweek), description=response)
         await ctx.respond(embed=embed)
 
     async def overview(self, ctx, matches: Option(str, description="Matches to get scores for", choices=["Today's matches", "Gameweek's matches", "Live matches"])): 
         fixtures = self.u.get_overview()
 
-        embed = discord.Embed(
+        embed = Embed(
             title="Gameweek fixture overview"
         )
 
@@ -239,8 +270,10 @@ class FplCommands(commands.Cog):
             ]
         }
 
-        response = ""
-        
+        embed = Embed(
+            title = "Goal totals for the bet"
+        )
+
         for bettor, team in bettors.items():
             goals = 0
             team_str = ""
@@ -248,9 +281,14 @@ class FplCommands(commands.Cog):
                 goals_df = self.u.get_player_attr_id(player["id"], "goals_scored")
                 goals += goals_df["goals_scored"].item()
                 team_str += "\n " + player["name"] + " (" + str(goals_df["goals_scored"].item()) + ")"
-            response += "```" + bettor + ": " + str(goals) + team_str + "```"
+            response = "```" + bettor + ": " + str(goals) + team_str + "```"
 
-        embed = Embed(title="Current goal totals for the bet", description=response)
+            embed.add_field(
+                name="",
+                value=response,
+                inline=False
+            )
+
         await ctx.followup.send(embed=embed)
 
     async def update(self, ctx):
