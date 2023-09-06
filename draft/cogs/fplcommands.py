@@ -5,9 +5,7 @@ import discord
 from discord import Option, File, Embed
 from discord.ext import commands
 from dotenv import load_dotenv
-import json
 from datetime import datetime, timezone
-from time import sleep
 
 dotenv_path = 'config.env'
 load_dotenv(dotenv_path=dotenv_path)
