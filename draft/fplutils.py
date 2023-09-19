@@ -329,6 +329,19 @@ class Utils:
         transactions_df = transactions_df.sort_values(by=['event', 'i'], axis=0, ascending=True)
 
         return transactions_df
+    
+    def get_standings(self):     
+        url = self.api["details"]
+        details = self.session.get(url).json()
+        standings = details["standings"]
+        owners = details["league_entries"]
+
+        owner_id_to_name = {owner["id"]: owner['entry_name'] for owner in owners}
+
+        for standing in standings: 
+            standing["entry_name"] = owner_id_to_name.get(standing["league_entry"], "Unknown Entry")
+
+        return standings
 
     def get_scores(self, gameweek=0):
         if gameweek == 0:
@@ -376,6 +389,37 @@ class Utils:
         
         return matches_df, gameweek
     
+    def get_team_bonus(self, team_id, gameweek=0):
+        if gameweek == 0:
+            gameweek = self.current_gw()
+
+        active_team = self.get_active_team(team_id, gameweek)
+
+        url = self.api["live"].format(gameweek)
+        fixtures = self.session.get(url).json()["fixtures"]
+
+        bonus_points = 0
+        for fixture in fixtures: 
+            for stat in fixture["stats"]:
+                if stat["s"] == "bonus":
+                    stat_bonus = stat["a"] + stat["h"]
+                    for bonus in stat_bonus:
+                        if bonus["element"] in active_team: 
+                            bonus_points += bonus["value"]
+
+        return bonus_points
+
+    def get_active_team(self, team_id, gameweek=0):
+        if gameweek == 0: 
+            gameweek = self.current_gw()
+
+        url = self.api["entry"].format(team_id, gameweek)
+        picks = self.session.get(url).json()["picks"]
+
+        elements = [item["element"] for item in picks if item["position"] < 12]
+
+        return elements
+    
     def get_overview(self, gameweek=0): 
         if gameweek == 0:
             gameweek = self.current_gw()
@@ -398,7 +442,7 @@ class Utils:
 
         merged_fixtures = []
         for fixture in fixtures:
-            merged_fixture = fixture.copy() 
+            merged_fixture = fixture.copy()
             merged_fixture["team_a"] = team_id_to_name.get(fixture["team_a"], "Unknown team ID: " + str(fixture["team_a"]))
             merged_fixture["team_h"] = team_id_to_name.get(fixture["team_h"], "Unknown team ID: " + str(fixture["team_h"]))
             for stat in merged_fixture["stats"]:

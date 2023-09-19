@@ -28,6 +28,8 @@ class FplCommands(commands.Cog):
         self.client.application_command(name="bet", description="Gets the current total goals scored for each bettor's selections", cls=discord.SlashCommand)(self.bet)
         self.client.application_command(name="update", description="Updates the data from FPL API", cls=discord.SlashCommand)(self.update)
         self.client.application_command(name="overview", description="Responds with an overview of this week's fixtures", cls=discord.SlashCommand)(self.overview)
+        self.client.application_command(name="standings", description="Responds with the current standings in the league", cls=discord.SlashCommand)(self.standings)
+
 
 
     async def owner(self, ctx, *, player_name: Option(str, description="Player's name")):
@@ -66,6 +68,26 @@ class FplCommands(commands.Cog):
             )
 
         await ctx.respond(embed=embed)
+
+    async def standings(self, ctx):
+        standings = self.u.get_standings()
+        
+        embed = Embed(
+            title="Current Standings"
+        )
+
+        sorted_standings = sorted(standings, key=lambda x: x["rank"])
+
+        for standing in sorted_standings:
+            response = "```" + str(standing["rank"]) + ". " + standing["entry_name"]
+            points_gap = 29 - len(response)
+            response += points_gap * " "
+            response += str(standing["total"]) + "```"
+
+            embed.add_field(name="", value=response, inline=False)
+
+        await ctx.respond(embed=embed)
+
 
 
     async def teamlist(self, ctx, owner: Option(str, description="Team owner's first name")):
@@ -222,7 +244,12 @@ class FplCommands(commands.Cog):
                 for _stat in all_stats:
                     if stat["s"] in ["penalties_saved", "penalties_missed", "yellow_cards", "saves", "bonus", "bps"]:
                         continue
-                    stat_text += emojis[stat["s"]] + _stat["name"] + " (" + str(_stat["value"]) + ")"
+                    value = _stat["value"]
+                    while(value > 0):
+                        stat_text += emojis[stat["s"]]
+                        value -= 1
+                    stat_text += _stat["name"]
+                        
                     if _stat["owner_name"] is not None:
                         stat_text += "**   " + _stat["owner_name"] + "**"
                     stat_text += "\n"
