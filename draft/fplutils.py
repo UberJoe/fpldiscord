@@ -363,8 +363,11 @@ class Utils:
                     try:
                         if pick.position <= 11:
                             home_points += live_data["elements"][str(pick.element)]["stats"]["total_points"]
+                            home_points -= live_data["elements"][str(pick.element)]["stats"]["bonus"]
                     except Exception:
                         pass
+
+                home_points += self.calculate_team_bonus(row.entry_id_home, gameweek)
             except Exception:
                 pass
 
@@ -379,8 +382,11 @@ class Utils:
                     try:
                         if pick.position <= 11:
                             away_points += live_data["elements"][str(pick.element)]["stats"]["total_points"]
+                            away_points -= live_data["elements"][str(pick.element)]["stats"]["bonus"]
                     except Exception:
                         pass
+
+                away_points += self.calculate_team_bonus(row.entry_id_away, gameweek)
             except Exception:
                 pass
 
@@ -408,6 +414,58 @@ class Utils:
                             bonus_points += bonus["value"]
 
         return bonus_points
+    
+    def calculate_team_bonus(self, team_id, gameweek=0):
+        if gameweek == 0:
+            gameweek = self.current_gw()
+
+        active_team = self.get_active_team(team_id, gameweek)
+
+        url = self.api["live"].format(gameweek)
+        fixtures = self.session.get(url).json()["fixtures"]
+
+        total_bonus_points = 0  # Use a different variable for total bonus points
+
+        for fixture in fixtures:
+            if (fixture["finished_provisional"] != True):
+                continue
+
+            for stat in fixture["stats"]:
+                if stat["s"] == "bps":
+                    home_bps = stat["h"]
+                    away_bps = stat["a"]
+
+                    fixture_bps = home_bps + away_bps
+
+                    sorted_bps = sorted(fixture_bps, key=lambda x: x['value'], reverse=True)
+                    sorted_bps = sorted_bps[:10]
+
+                    bonus_given = [3, 2, 1, 0]
+
+                    # Handle ties by keeping track of the previous BPS value
+                    prev_bps_value = None
+                    for i, el in enumerate(sorted_bps):
+                        tie = False
+                        if prev_bps_value is not None and el['value'] == prev_bps_value:
+                            tie = True
+
+                        if (i > 2):
+                            if (tie != True):
+                                break
+                            else:
+                                i = 3
+
+                        if el["element"] in active_team:
+                            if (tie == True):
+                                # Tied position, use the same bonus as the previous player
+                                total_bonus_points += bonus_given[i - 1]
+                            else:
+                                total_bonus_points += bonus_given[i]
+                        prev_bps_value = el['value']
+
+        return total_bonus_points
+
+
 
     def get_active_team(self, team_id, gameweek=0):
         if gameweek == 0: 
