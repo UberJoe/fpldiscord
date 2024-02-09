@@ -81,8 +81,6 @@ class FplCommands(commands.Cog):
             title=title
         )
 
-        print(standings)
-
         if (normal == True):
             sorted_standings = sorted(standings, key=lambda x: x["points_for"], reverse=True)
         else:
