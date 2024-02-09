@@ -251,13 +251,8 @@ class Utils:
             raise ValueError(f'No players owned by: {owner}')
 
         return team_df
-
-    def get_fixtures(self, gw=0):
-        if gw == 0:
-            gw = self.current_gw()
-            if self.gw_info["current_event_finished"] == True:
-                gw += 1
-
+    
+    def get_readable_matches(self):
         matches_df = self.get_data('matches')
         league_entry_df = self.get_data('league_entries')
 
@@ -282,7 +277,7 @@ class Utils:
 
         # Drop unused columns, rename for clearer columns
         matches_df = (matches_df
-                    .drop(['finished', 'started', 'id_x', 'id_y'], axis=1)
+                    .drop(['started', 'id_x', 'id_y'], axis=1)
                     .rename(columns={'event':'match',
                             'player_first_name_x': 'home_player',
                             'league_entry_1_points': 'home_score',
@@ -290,10 +285,30 @@ class Utils:
                             'league_entry_2_points': 'away_score',
                             })
                     )
+        return matches_df
 
-        matches_df = matches_df.loc[matches_df['match'] == gw]
+    def get_fixtures(self, gw=0):
+        if gw == 0:
+            gw = self.current_gw()
+            if self.gw_info["current_event_finished"] == True:
+                gw += 1
 
-        return matches_df, gw
+        matches_df = self.get_readable_matches()
+
+        fixtures = matches_df.loc[matches_df['match'] == gw]
+
+        return fixtures, gw
+    
+    def get_h2h(self, team1_id, team2_id):
+        matches_df = self.get_readable_matches()
+        
+        h2h = matches_df.loc[
+            (((matches_df['entry_id_home'] == team1_id) & (matches_df['entry_id_away'] == team2_id)) |
+            ((matches_df['entry_id_away'] == team1_id) & (matches_df['entry_id_home'] == team2_id))) &
+            (matches_df['finished'] == True)
+        ]
+
+        return h2h
 
     def get_transactions(self, gw=0):
         transactions_df = self.get_data('transactions')
