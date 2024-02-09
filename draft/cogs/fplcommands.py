@@ -69,22 +69,40 @@ class FplCommands(commands.Cog):
 
         await ctx.respond(embed=embed)
 
-    async def standings(self, ctx):
+    async def standings(self, ctx, normal: Option(bool, description="Show standings based on total points, rather than h2h") = False):
         standings = self.u.get_standings()
+
+        if (normal == True):
+            title = "H2H Standings"
+        else: 
+            title = "Normal Standings (Total Points)"
         
         embed = Embed(
-            title="Current Standings"
+            title=title
         )
 
-        sorted_standings = sorted(standings, key=lambda x: x["rank"])
+        print(standings)
 
+        if (normal == True):
+            sorted_standings = sorted(standings, key=lambda x: x["points_for"], reverse=True)
+        else:
+            sorted_standings = sorted(standings, key=lambda x: x["rank"])
+
+        rank = 1
         for standing in sorted_standings:
-            response = "```" + str(standing["rank"]) + ". " + standing["entry_name"]
+            if (normal == True):
+                points = str(standing["points_for"])
+            else:
+                points = str(standing["total"])
+            
+            response = "```" + str(rank) + ". " + standing["entry_name"]
             points_gap = 29 - len(response)
             response += points_gap * " "
-            response += str(standing["total"]) + "```"
+            response += points + "```"
 
             embed.add_field(name="", value=response, inline=False)
+
+            rank += 1
 
         await ctx.respond(embed=embed)
 
