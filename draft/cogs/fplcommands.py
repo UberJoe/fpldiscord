@@ -73,9 +73,9 @@ class FplCommands(commands.Cog):
         standings = self.u.get_standings()
 
         if (normal == True):
-            title = "H2H Standings"
-        else: 
             title = "Normal Standings (Total Points)"
+        else: 
+            title = "H2H Standings"
         
         embed = Embed(
             title=title
