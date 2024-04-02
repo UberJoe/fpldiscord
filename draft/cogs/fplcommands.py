@@ -54,7 +54,7 @@ class FplCommands(commands.Cog):
         matches_df, gameweek = self.u.get_fixtures(gameweek)
 
         embed = Embed(
-            title="Fixtures for GW" + str(gameweek)
+            title="Coq au Ian H2H fixtures for GW" + str(gameweek)
         )
 
         spaces = matches_df["home_player"].str.len().max()
@@ -73,9 +73,9 @@ class FplCommands(commands.Cog):
         standings = self.u.get_standings()
 
         if (normal == True):
-            title = "Normal Standings (Total Points)"
+            title = "Coq au Ian Normal Standings (Total Points)"
         else: 
-            title = "H2H Standings"
+            title = "Coq au Ian H2H Standings"
         
         embed = Embed(
             title=title
@@ -198,7 +198,7 @@ class FplCommands(commands.Cog):
         scores_df, gameweek = self.u.get_scores(gameweek)
         
         embed = Embed(
-            title="Live scores for GW"+str(gameweek)
+            title="Coq au Ian H2H current scores for GW"+str(gameweek)
         )
 
         home_str_len = scores_df["home_player"].str.len().max()
