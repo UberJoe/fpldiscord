@@ -226,6 +226,18 @@ class Utils:
             attr
         ]]
         return selected_players_df
+    
+    def get_team_id(self, team_owner: str):
+        league_entries = self.get_data("league_entries")
+
+        team_df = league_entries[league_entries['player_first_name'].str.lower() == team_owner.lower()]
+
+        entry_id = ""
+        if not team_df.empty:
+            entry_id = team_df['entry_id'].iloc[0]
+
+        return entry_id
+
 
     def get_player_attr_id(self, player_id: int, attr: str):
         players_df = self.get_team_players()
@@ -304,7 +316,7 @@ class Utils:
         
         h2h = matches_df.loc[
             (((matches_df['entry_id_home'] == team1_id) & (matches_df['entry_id_away'] == team2_id)) |
-            ((matches_df['entry_id_away'] == team1_id) & (matches_df['entry_id_home'] == team2_id))) &
+            ((matches_df['entry_id_away'] == team1_id) & (matches_df['entry_id_home'] == team2_id)))  &
             (matches_df['finished'] == True)
         ]
 

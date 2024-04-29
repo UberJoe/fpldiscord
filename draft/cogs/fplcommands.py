@@ -29,6 +29,7 @@ class FplCommands(commands.Cog):
         self.client.application_command(name="update", description="Updates the data from FPL API", cls=discord.SlashCommand)(self.update)
         self.client.application_command(name="overview", description="Responds with an overview of this week's fixtures", cls=discord.SlashCommand)(self.overview)
         self.client.application_command(name="standings", description="Responds with the current standings in the league", cls=discord.SlashCommand)(self.standings)
+        self.client.application_command(name="h2h", description="Responds with the h2h results between two teams", cls=discord.SlashCommand)(self.h2h)
 
 
 
@@ -192,6 +193,43 @@ class FplCommands(commands.Cog):
             image_binary.seek(0)
             await ctx.respond(owner + "'s team", file=File(fp=image_binary, filename='team_image.png'))
 
+    async def h2h(self, ctx, team1: Option(str, description="Team owner #1"), team2: Option(str, description="Team owner #2")):
+        team1_id = self.u.get_team_id(team1)
+        if team1_id == "":
+            await ctx.respond("Didn't find team1")
+            return
+        team2_id = self.u.get_team_id(team2)
+        if team2_id == "":
+            await ctx.respond("Didn't find team2")
+            return
+
+        h2h = self.u.get_h2h(team1_id, team2_id)
+
+        embed = Embed(
+            title="H2H results: " + team1 + " vs " + team2
+        )
+        print(h2h)
+
+        home_str_len = h2h["home_player"].str.len().max()
+        for row in h2h.itertuples():
+            home_spaces = home_str_len - len(row.home_player)
+            match len(str(row.home_score)):
+                case 1: home_score_str = "      " + str(row.home_score)
+                case 2: home_score_str = "     "  + str(row.home_score)
+                case 3: home_score_str = "    " + str(row.home_score)
+
+            match len(str(row.away_score)):
+                case 1: away_score_str = str(row.away_score) + "      "
+                case 2: away_score_str = str(row.away_score) + "     "
+                case 3: away_score_str = str(row.away_score) + "    "
+
+            response = "```" + row.home_player + home_spaces*" " +  home_score_str + " - " + away_score_str + row.away_player + "```"
+            embed.add_field(
+                name="",
+                value=response,
+                inline=False
+            )
+        await ctx.respond(embed=embed)
 
     # @bot.command(description="Get the scores of the current gameweek (live). Specify GW for previous weeks' results.")
     async def scores(self, ctx, gameweek: Option(int, description="Gameweek to get scores for", max_value=38, min_value=1) = 0):
