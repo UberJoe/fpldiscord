@@ -24,7 +24,7 @@ class FplCommands(commands.Cog):
         self.client.application_command(name="waivers", description="Responds with this week's waivers", cls=discord.SlashCommand)(self.waivers)
         self.client.application_command(name="dave", description="Responds with a message for whenever Dave pipes up", cls=discord.SlashCommand)(self.dave)
         self.client.application_command(name="team", description="Responds with an image of the team owned by the specified owner", cls=discord.SlashCommand)(self.team)
-        # self.client.application_command(name="scores", description="Get the scores of the current gameweek (live). Specify GW for previous weeks", cls=discord.SlashCommand)(self.scores)
+        self.client.application_command(name="scores", description="Get the scores of the current gameweek (live). Specify GW for previous weeks", cls=discord.SlashCommand)(self.scores)
         self.client.application_command(name="bet", description="Gets the current total goals scored for each bettor's selections", cls=discord.SlashCommand)(self.bet)
         self.client.application_command(name="update", description="Updates the data from FPL API", cls=discord.SlashCommand)(self.update)
         self.client.application_command(name="overview", description="Responds with an overview of this week's fixtures", cls=discord.SlashCommand)(self.overview)
@@ -233,27 +233,14 @@ class FplCommands(commands.Cog):
 
     # @bot.command(description="Get the scores of the current gameweek (live). Specify GW for previous weeks' results.")
     async def scores(self, ctx, gameweek: Option(int, description="Gameweek to get scores for", max_value=38, min_value=1) = 0):
-        scores_df, gameweek = self.u.get_scores(gameweek)
+        scores, gameweek = self.u.get_scores(gameweek)
         
         embed = Embed(
-            title="Coq au Ian H2H current scores for GW"+str(gameweek)
+            title="Coq au Ian current scores for GW"+str(gameweek)
         )
 
-        home_str_len = scores_df["home_player"].str.len().max()
-
-        for row in scores_df.itertuples():
-            home_spaces = home_str_len - len(row.home_player)
-            match len(str(row.home_score)):
-                case 1: home_score_str = "      " + str(row.home_score)
-                case 2: home_score_str = "     "  + str(row.home_score)
-                case 3: home_score_str = "    " + str(row.home_score)
-
-            match len(str(row.away_score)):
-                case 1: away_score_str = str(row.away_score) + "      "
-                case 2: away_score_str = str(row.away_score) + "     "
-                case 3: away_score_str = str(row.away_score) + "    "
-
-            response = "```" + row.home_player + home_spaces*" " +  home_score_str + " - " + away_score_str + row.away_player + "```"
+        for team_score in scores:
+            response = "```" + team_score["team_name"] + ": " + str(team_score["points"]) + "```"
             embed.add_field(
                 name="",
                 value=response,

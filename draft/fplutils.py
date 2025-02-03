@@ -6,7 +6,6 @@ import math
 import unidecode
 from datetime import datetime, timedelta, timezone
 
-
 class Utils:
 
     api = {
@@ -373,54 +372,42 @@ class Utils:
     def get_scores(self, gameweek=0):
         if gameweek == 0:
             gameweek = self.current_gw()
-        matches_df, gameweek = self.get_fixtures(gameweek)
 
-        url = self.api["live"].format(gameweek)
-        live_data = self.session.get(url).json()
+        team_details = self.session.get(self.api["details"]).json()
         
-        for row in matches_df.itertuples():
-            home_points = 0
-            try:
-                # get home team points
-                url = self.api["entry"].format(row.entry_id_home, gameweek)
-                r = self.session.get(url).json()
-                picks_home_df = pd.json_normalize(r["picks"])
+        scores = {}
+        for team in team_details['league_entries']:
+            points = 0
+            points += self.get_team_scores_no_bonus(team['entry_id'], gameweek)
+            points += self.calculate_team_bonus(team['entry_id'], gameweek)
+
+            scores[team['entry_id']] = {}
+            scores[team['entry_id']]["team_name"] = team["entry_name"]
+            scores[team['entry_id']]["points"] = points
+            scores[team['entry_id']]["league_entry"] = team["id"]
+
+        scores_by_entry = {team["league_entry"]: team for team in scores.values()}
+        sorted_scores = [scores_by_entry[entry["league_entry"]] for entry in team_details["standings"] if entry["league_entry"] in scores_by_entry]
+        
+        return sorted_scores, gameweek
+    
+    def get_team_scores_no_bonus(self, team_id, gameweek=0):
+        if gameweek == 0:
+            gameweek = self.current_gw()
+
+        active_team = self.get_active_team(team_id, gameweek)
+        live_data = self.session.get(self.api["live"].format(gameweek)).json()
+
+        points = 0
+        for player in active_team:
+            try: 
+                points += live_data["elements"][str(player)]["stats"]["total_points"]
+                points -= live_data["elements"][str(player)]["stats"]["bonus"]
+            except Exception:
+                pass
+
+        return points
                 
-                for pick in picks_home_df.itertuples():
-                    try:
-                        if pick.position <= 11:
-                            home_points += live_data["elements"][str(pick.element)]["stats"]["total_points"]
-                            home_points -= live_data["elements"][str(pick.element)]["stats"]["bonus"]
-                    except Exception:
-                        pass
-
-                home_points += self.calculate_team_bonus(row.entry_id_home, gameweek)
-            except Exception:
-                pass
-
-            away_points = 0
-            try:
-                # get away team points
-                url = self.api["entry"].format(row.entry_id_away, gameweek)
-                r = self.session.get(url).json()
-                picks_away_df = pd.json_normalize(r["picks"])
-
-                for pick in picks_away_df.itertuples():
-                    try:
-                        if pick.position <= 11:
-                            away_points += live_data["elements"][str(pick.element)]["stats"]["total_points"]
-                            away_points -= live_data["elements"][str(pick.element)]["stats"]["bonus"]
-                    except Exception:
-                        pass
-
-                away_points += self.calculate_team_bonus(row.entry_id_away, gameweek)
-            except Exception:
-                pass
-
-            matches_df._set_value(row.Index, 'home_score', home_points)
-            matches_df._set_value(row.Index, 'away_score', away_points)
-        
-        return matches_df, gameweek
     
     def get_team_bonus(self, team_id, gameweek=0):
         if gameweek == 0:
@@ -566,3 +553,6 @@ class Utils:
 
     def remove_accents(self, string: str):
         return unidecode.unidecode(string)
+    
+utils = Utils()
+utils.get_scores()

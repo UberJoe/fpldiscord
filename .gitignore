@@ -5,3 +5,4 @@ pyvenv.cfg
 config.env
 fly.toml
 tmp/
+.vscode/launch.json
