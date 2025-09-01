@@ -273,8 +273,7 @@ class Utils:
                             how='left',
                             left_on='league_entry_1',
                             right_on='id')
-                        .rename(columns={'entry_id':'entry_id_home'
-                                })
+                    .rename(columns={'entry_id': 'entry_id_home'})
                     )
 
         # Join to get team names and player names of entry 2 (away team)
@@ -283,26 +282,25 @@ class Utils:
                             how='left',
                             left_on='league_entry_2',
                             right_on='id')
-                        .rename(columns={'entry_id':'entry_id_away'})
+                    .rename(columns={'entry_id': 'entry_id_away'})
                     )
+
+        # Replace null player names with 'Average'
+        matches_df['home_player'] = matches_df['player_first_name_x'].fillna('Average')
+        matches_df['away_player'] = matches_df['player_first_name_y'].fillna('Average')
 
         # Drop unused columns, rename for clearer columns
         matches_df = (matches_df
-                    .drop(['started', 'id_x', 'id_y'], axis=1)
-                    .rename(columns={'event':'match',
-                            'player_first_name_x': 'home_player',
-                            'league_entry_1_points': 'home_score',
-                            'player_first_name_y': 'away_player',
-                            'league_entry_2_points': 'away_score',
-                            })
+                    .drop(['started', 'id_x', 'id_y', 'player_first_name_x', 'player_first_name_y'], axis=1)
+                    .rename(columns={'event': 'match',
+                                    'league_entry_1_points': 'home_score',
+                                    'league_entry_2_points': 'away_score'})
                     )
         return matches_df
 
     def get_fixtures(self, gw=0):
         if gw == 0:
-            gw = self.current_gw()
-            if self.gw_info["current_event_finished"] == True:
-                gw += 1
+            gw = self.current_gw(True)
 
         matches_df = self.get_readable_matches()
 
@@ -377,8 +375,6 @@ class Utils:
         
         scores = {}
         for team in team_details['league_entries']:
-            if team['entry_id'] == None:
-                continue
             points = 0
             points += self.get_team_scores_no_bonus(team['entry_id'], gameweek)
             points += self.calculate_team_bonus(team['entry_id'], gameweek)
@@ -396,8 +392,6 @@ class Utils:
     def get_team_scores_no_bonus(self, team_id, gameweek=0):
         if gameweek == 0:
             gameweek = self.current_gw()
-        if team_id == None:
-            return
 
         active_team = self.get_active_team(team_id, gameweek)
         live_data = self.session.get(self.api["live"].format(gameweek)).json()
@@ -486,8 +480,6 @@ class Utils:
 
 
     def get_active_team(self, team_id, gameweek=0):
-        if team_id == None:
-            return
         if gameweek == 0: 
             gameweek = self.current_gw()
 
@@ -544,6 +536,9 @@ class Utils:
 
     def current_gw(self, next_if_finished=False):
         self.update_data()
+
+        if self.gw_info["current_event"] == None:
+            return self.gw_info["next_event"]
 
         if next_if_finished == True:
             if self.gw_info['current_event_finished'] == True:

@@ -19,17 +19,17 @@ class FplCommands(commands.Cog):
         self.u = Utils()
 
         self.client.application_command(name="owner", description="Finds the owner for the specified player", cls=discord.SlashCommand)(self.owner)
-        # self.client.application_command(name="fixtures", description="Responds with the H2H fixtures for current or specified GW", cls=discord.SlashCommand)(self.fixtures)
+        self.client.application_command(name="fixtures", description="Responds with the H2H fixtures for current or specified GW", cls=discord.SlashCommand)(self.fixtures)
         self.client.application_command(name="teamlist", description="Responds with the team of the specified owner as a list", cls=discord.SlashCommand)(self.teamlist)
         self.client.application_command(name="waivers", description="Responds with this week's waivers", cls=discord.SlashCommand)(self.waivers)
         self.client.application_command(name="dave", description="Responds with a message for whenever Dave pipes up", cls=discord.SlashCommand)(self.dave)
-        # self.client.application_command(name="team", description="Responds with an image of the team owned by the specified owner", cls=discord.SlashCommand)(self.team)
+        self.client.application_command(name="team", description="Responds with an image of the team owned by the specified owner", cls=discord.SlashCommand)(self.team)
         self.client.application_command(name="scores", description="Get the scores of the current gameweek (live). Specify GW for previous weeks", cls=discord.SlashCommand)(self.scores)
         self.client.application_command(name="bet", description="Gets the current total goals scored for each bettor's selections", cls=discord.SlashCommand)(self.bet)
         self.client.application_command(name="update", description="Updates the data from FPL API", cls=discord.SlashCommand)(self.update)
-        # self.client.application_command(name="overview", description="Responds with an overview of this week's fixtures", cls=discord.SlashCommand)(self.overview)
-        # self.client.application_command(name="standings", description="Responds with the current standings in the league", cls=discord.SlashCommand)(self.standings)
-        # self.client.application_command(name="h2h", description="Responds with the h2h results between two teams", cls=discord.SlashCommand)(self.h2h)
+        self.client.application_command(name="overview", description="Responds with an overview of this week's fixtures", cls=discord.SlashCommand)(self.overview)
+        self.client.application_command(name="standings", description="Responds with the current standings in the league", cls=discord.SlashCommand)(self.standings)
+        self.client.application_command(name="h2h", description="Responds with the h2h results between two teams", cls=discord.SlashCommand)(self.h2h)
 
 
 
@@ -57,10 +57,9 @@ class FplCommands(commands.Cog):
         embed = Embed(
             title="Coq au Ian H2H fixtures for GW" + str(gameweek)
         )
-
         spaces = matches_df["home_player"].str.len().max()
         for row in matches_df.itertuples():
-            home_spaces = spaces - len(row.home_player)
+            home_spaces = int(spaces - len(row.home_player))
             response = "```" + row.home_player + home_spaces*" " + "   vs   " + row.away_player + "```"
             embed.add_field(
                 name="",
