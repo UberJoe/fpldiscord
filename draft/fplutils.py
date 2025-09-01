@@ -9,10 +9,10 @@ from datetime import datetime, timedelta, timezone
 class Utils:
 
     api = {
-        'transactions': 'https://draft.premierleague.com/api/draft/league/6/transactions',
+        'transactions': 'https://draft.premierleague.com/api/draft/league/12/transactions',
         'elements': 'https://draft.premierleague.com/api/bootstrap-static',
-        'details': 'https://draft.premierleague.com/api/league/6/details',
-        'element_status': 'https://draft.premierleague.com/api/league/6/element-status',
+        'details': 'https://draft.premierleague.com/api/league/12/details',
+        'element_status': 'https://draft.premierleague.com/api/league/12/element-status',
         'game': 'https://draft.premierleague.com/api/game',
         'live': 'https://draft.premierleague.com/api/event/{}/live',
         'entry': 'https://draft.premierleague.com/api/entry/{}/event/{}'
@@ -377,6 +377,8 @@ class Utils:
         
         scores = {}
         for team in team_details['league_entries']:
+            if team['entry_id'] == None:
+                continue
             points = 0
             points += self.get_team_scores_no_bonus(team['entry_id'], gameweek)
             points += self.calculate_team_bonus(team['entry_id'], gameweek)
@@ -394,6 +396,8 @@ class Utils:
     def get_team_scores_no_bonus(self, team_id, gameweek=0):
         if gameweek == 0:
             gameweek = self.current_gw()
+        if team_id == None:
+            return
 
         active_team = self.get_active_team(team_id, gameweek)
         live_data = self.session.get(self.api["live"].format(gameweek)).json()
@@ -482,6 +486,8 @@ class Utils:
 
 
     def get_active_team(self, team_id, gameweek=0):
+        if team_id == None:
+            return
         if gameweek == 0: 
             gameweek = self.current_gw()
 
@@ -555,4 +561,3 @@ class Utils:
         return unidecode.unidecode(string)
     
 utils = Utils()
-utils.get_scores()

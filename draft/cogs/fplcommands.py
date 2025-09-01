@@ -23,12 +23,12 @@ class FplCommands(commands.Cog):
         self.client.application_command(name="teamlist", description="Responds with the team of the specified owner as a list", cls=discord.SlashCommand)(self.teamlist)
         self.client.application_command(name="waivers", description="Responds with this week's waivers", cls=discord.SlashCommand)(self.waivers)
         self.client.application_command(name="dave", description="Responds with a message for whenever Dave pipes up", cls=discord.SlashCommand)(self.dave)
-        self.client.application_command(name="team", description="Responds with an image of the team owned by the specified owner", cls=discord.SlashCommand)(self.team)
+        # self.client.application_command(name="team", description="Responds with an image of the team owned by the specified owner", cls=discord.SlashCommand)(self.team)
         self.client.application_command(name="scores", description="Get the scores of the current gameweek (live). Specify GW for previous weeks", cls=discord.SlashCommand)(self.scores)
         self.client.application_command(name="bet", description="Gets the current total goals scored for each bettor's selections", cls=discord.SlashCommand)(self.bet)
         self.client.application_command(name="update", description="Updates the data from FPL API", cls=discord.SlashCommand)(self.update)
-        self.client.application_command(name="overview", description="Responds with an overview of this week's fixtures", cls=discord.SlashCommand)(self.overview)
-        self.client.application_command(name="standings", description="Responds with the current standings in the league", cls=discord.SlashCommand)(self.standings)
+        # self.client.application_command(name="overview", description="Responds with an overview of this week's fixtures", cls=discord.SlashCommand)(self.overview)
+        # self.client.application_command(name="standings", description="Responds with the current standings in the league", cls=discord.SlashCommand)(self.standings)
         # self.client.application_command(name="h2h", description="Responds with the h2h results between two teams", cls=discord.SlashCommand)(self.h2h)
 
 
@@ -310,33 +310,37 @@ class FplCommands(commands.Cog):
     async def bet(self, ctx):
         await ctx.defer()
         bettors = {
-            "Henry" : [
-                {"id": 495, "name": "Porro"}, {"id": 363, "name": "Walker"}, 
-                {"id": 311, "name": "TAA"}, {"id": 25, "name": "Zinchenko"}
+            "Dave" : [
+                {"id": 237, "name": "Enzo"}, {"id": 517, "name": "Anderson"}, 
+                {"id": 667, "name": "Xhaka"}, {"id": 491, "name": "Tonali"}
             ],
-            "Jack" : [
-                {"id": 329, "name": "Mac Allister"}, {"id": 360, "name": "Rodri"}, 
-                {"id": 311, "name": "TAA"}, {"id": 16, "name": "Rice"}
+            "Harry" : [
+                {"id": 387, "name": "Szoboszlai"}, {"id": 485, "name": "Gordon"}, 
+                {"id": 66, "name": "Neto"}, {"id": 242, "name": "Dewsbury-Hall"}
             ], 
             "Joe" : [
-                {"id": 378, "name": "Mainoo"}, {"id": 48, "name": "McGinn"}, 
-                {"id": 335, "name": "Robertson"}, {"id": 340, "name": "Akanji"}
+                {"id": 414, "name": "Foden"}, {"id": 486, "name": "Elanga"}, 
+                {"id": 515, "name": "Gibbs-White"}, {"id": 329, "name": "Harry Wilson"}
             ], 
+            "Jack" : [
+                {"id": 515, "name": "Gibbs-White"}, {"id": 488, "name": "Bruno G"}, 
+                {"id": 224, "name": "Cucurella"}, {"id": 386, "name": "Mac Allister"}
+            ], 
+            "Gabe" : [
+                {"id": 427, "name": "Reijnders"}, {"id": 582, "name": "Kudus"}, 
+                {"id": 299, "name": "Ndiaye"}, {"id": 48, "name": "Tielemans"}
+            ],
             "Hari" : [
-                {"id": 78, "name": "Semenyo"}, {"id": 336, "name": "Szoboszlai"}, 
-                {"id": 350, "name": "Gvardiol"}, {"id": 13, "name": "Odegaard"}
+                {"id": 178, "name": "Welbeck"}, {"id": 237, "name": "Enzo"}, 
+                {"id": 516, "name": "Hudson Odoi"}, {"id": 329, "name": "Harry Wilson"}
+            ],
+            "Henry" : [
+                {"id": 488, "name": "Bruno G"}, {"id": 16, "name": "Saka"}, 
+                {"id": 388, "name": "Curtis Jones"}, {"id": 66, "name": "Neto"}
             ],
             "Steve" : [
-                {"id": 247, "name": "Iwobi"}, {"id": 217, "name": "Doucoure"}, 
-                {"id": 491, "name": "Johnson"}, {"id": 394, "name": "Guimarães"}
-            ], 
-            "Harry" : [
-                {"id": 593, "name": "De Ligt"}, {"id": 3, "name": "Gabriel"}, 
-                {"id": 322, "name": "Gomez"}, {"id": 19, "name": "Smith-Rowe"}
-            ], 
-            "Dave" : [
-                {"id": 360, "name": "Rodri"}, {"id": 323, "name": "Gravenberch"}, 
-                {"id": 492, "name": "Kulusevski"}, {"id": 391, "name": "Almiron"}
+                {"id": 370, "name": "Frimpong"}, {"id": 402, "name": "Ait Nouri"}, 
+                {"id": 488, "name": "Bruno G"}, {"id": 427, "name": "Reijnders"}
             ]
         }
 
