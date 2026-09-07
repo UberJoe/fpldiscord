@@ -1,12 +1,13 @@
 // App shell: single column, hamburger nav, lands on Standings. Client-side
 // routing is a hand-rolled history-API hook (src/router.ts); the Go server's
-// SPA fallback makes deep links work. Waiver History and Bet views arrive in
-// later tickets — their nav entries resolve to a short placeholder for now.
+// SPA fallback makes deep links work. The Bet view arrives in a later ticket —
+// its nav entry resolves to a short placeholder for now.
 
 import { useState } from "react";
 import { usePath, matchManager, navigate } from "./router";
 import { Standings } from "./views/Standings";
 import { Manager } from "./views/Manager";
+import { Waivers } from "./views/Waivers";
 
 interface NavItem {
   path: string;
@@ -32,7 +33,7 @@ function Body({ path }: { path: string }) {
     case "/":
       return <Standings />;
     case "/waivers":
-      return <Placeholder label="Waiver History" />;
+      return <Waivers />;
     case "/bet":
       return <Placeholder label="The Bet leaderboard" />;
     default:

@@ -224,6 +224,88 @@ func buildManager(le *fpl.LeagueEntry, sq fpl.ManagerSquad) managerData {
 	}
 }
 
+// waiversData is GET /api/waivers?gw=N -> data: one processed waiver round.
+// GW is the resolved gameweek (an out-of-range request is clamped, never a
+// 400), echoed back so the client can sync its selector. Rows is never nil.
+type waiversData struct {
+	GW   int          `json:"gw"`
+	Rows []waiversRow `json:"rows"`
+}
+
+// waiversRow is the camelCase JSON projection of fpl.WaiverRow, already sorted
+// by index by fpl. type is "waiver" / "freeAgent"; status is
+// "accepted" / "failed" (fpl resolves the raw Draft codes). priority is on this
+// unauthenticated feed so the client can lay out bid order without a login.
+type waiversRow struct {
+	OwnerName string `json:"ownerName"`
+	EntryID   int    `json:"entryId"`
+	In        string `json:"in"`
+	Out       string `json:"out"`
+	Type      string `json:"type"`
+	Status    string `json:"status"`
+	Priority  int    `json:"priority"`
+	Index     int    `json:"index"`
+}
+
+func (s *Server) handleWaivers(w http.ResponseWriter, r *http.Request) {
+	snap := requireSnapshot(w, s.snap)
+	if snap == nil {
+		return
+	}
+	gw := resolveWaiverGW(snap, r.URL.Query().Get("gw"))
+	etag := fmt.Sprintf("\"waivers-%d-%d\"", gw, snap.BuiltAt.Unix())
+	respondAPI(w, r, snap, etag, buildWaivers(snap, gw))
+}
+
+// resolveWaiverGW turns the raw ?gw= query value into the gameweek to serve. An
+// absent, empty or non-numeric value resolves to the latest processed
+// gameweek; an in-range number is used as-is; an out-of-range number is clamped
+// to the processed span (never a 400). With no processed rounds at all the
+// request value (or 0) passes through and the rows come back empty.
+func resolveWaiverGW(snap *fpl.Snapshot, raw string) int {
+	processed := snap.ProcessedGWs()
+	latest := 0
+	if len(processed) > 0 {
+		latest = processed[len(processed)-1]
+	}
+
+	n, err := strconv.Atoi(raw)
+	if raw == "" || err != nil {
+		return latest
+	}
+	if len(processed) == 0 {
+		return n
+	}
+	if lo := processed[0]; n < lo {
+		return lo
+	}
+	if n > latest {
+		return latest
+	}
+	return n
+}
+
+// buildWaivers re-tags fpl.LeagueTransactions(gw) as camelCase JSON, folding the
+// accent-stripped webName rule the rest of /api/* follows onto the in/out
+// names. Rows stay in fpl's index order.
+func buildWaivers(snap *fpl.Snapshot, gw int) waiversData {
+	src := snap.LeagueTransactions(gw)
+	rows := make([]waiversRow, 0, len(src))
+	for _, t := range src {
+		rows = append(rows, waiversRow{
+			OwnerName: t.OwnerName,
+			EntryID:   int(t.EntryID),
+			In:        fpl.StripAccents(t.In),
+			Out:       fpl.StripAccents(t.Out),
+			Type:      string(t.Type),
+			Status:    string(t.Status),
+			Priority:  t.Priority,
+			Index:     t.Index,
+		})
+	}
+	return waiversData{GW: gw, Rows: rows}
+}
+
 // buildStandings re-tags fpl.LiveStandings() as camelCase JSON. All ordering,
 // the LeagueEntryID->EntryID join and the live-rank maths live in fpl;
 // LiveStandings returns nil in h2h mode, which becomes an empty (non-nil) rows

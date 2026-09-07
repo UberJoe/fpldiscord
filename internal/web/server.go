@@ -41,6 +41,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
 	mux.HandleFunc("GET /api/standings", s.handleStandings)
 	mux.HandleFunc("GET /api/manager/{entryId}", s.handleManager)
+	mux.HandleFunc("GET /api/waivers", s.handleWaivers)
 
 	sub, err := fs.Sub(distFS, "dist")
 	if err != nil {

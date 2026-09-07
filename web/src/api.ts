@@ -57,6 +57,22 @@ export interface ManagerData {
   players: ManagerPlayer[];
 }
 
+export interface WaiversRow {
+  ownerName: string;
+  entryId: number;
+  in: string;
+  out: string;
+  type: "waiver" | "freeAgent";
+  status: "accepted" | "failed";
+  priority: number;
+  index: number;
+}
+
+export interface WaiversData {
+  gw: number;
+  rows: WaiversRow[];
+}
+
 /** Raised for a 404 from /api/manager/{id} — the id isn't in this league. */
 export class NotFoundError extends Error {
   constructor(message = "not found") {
@@ -98,4 +114,13 @@ export function fetchStandings(): Promise<Envelope<StandingsData>> {
 
 export function fetchManager(entryId: number): Promise<Envelope<ManagerData>> {
   return getEnvelope<ManagerData>(`/api/manager/${entryId}`);
+}
+
+/**
+ * Fetch one processed waiver round. Omit gw for the latest; an out-of-range gw
+ * is clamped server-side and the resolved value comes back in data.gw.
+ */
+export function fetchWaivers(gw?: number): Promise<Envelope<WaiversData>> {
+  const q = gw === undefined ? "" : `?gw=${gw}`;
+  return getEnvelope<WaiversData>(`/api/waivers${q}`);
 }

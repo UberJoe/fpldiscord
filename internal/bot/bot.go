@@ -102,6 +102,7 @@ func New(cfg config.Config, log *slog.Logger, snap SnapshotSource) (*Bot, error)
 			"scores":    handleScores,
 			"owner":     handleOwner,
 			"teamlist":  handleTeamlist,
+			"waivers":   handleWaivers,
 		},
 		autocomplete: map[string]acHandlerFunc{
 			"owner":    autocompletePlayer,
@@ -148,6 +149,31 @@ func commandSpecs() []*discordgo.ApplicationCommand {
 			},
 		},
 		{
+			Name:        "waivers",
+			Description: "Show the results of a processed waiver round",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionInteger,
+					Name:        "gw",
+					Description: "Gameweek to show (defaults to the latest processed round)",
+					MinValue:    &waiversGWMin,
+					MaxValue:    38,
+					Required:    false,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "result",
+					Description: "Which claims to show",
+					Required:    false,
+					Choices: []*discordgo.ApplicationCommandOptionChoice{
+						{Name: "accepted", Value: "accepted"},
+						{Name: "failed", Value: "failed"},
+						{Name: "all", Value: "all"},
+					},
+				},
+			},
+		},
+		{
 			Name:        "owner",
 			Description: "Show which manager owns a player",
 			Options: []*discordgo.ApplicationCommandOption{
@@ -178,6 +204,9 @@ func commandSpecs() []*discordgo.ApplicationCommand {
 
 // scoresGWMin is the /scores gw option minimum; discordgo wants a *float64.
 var scoresGWMin float64 = 1
+
+// waiversGWMin is the /waivers gw option minimum; discordgo wants a *float64.
+var waiversGWMin float64 = 1
 
 // onReady runs one ApplicationCommandBulkOverwrite — Discord diffs the set
 // server-side. Guild-scoped (instant) when DEV_GUILD_ID is set, else global
@@ -274,13 +303,24 @@ func focusedOption(opts []*discordgo.ApplicationCommandInteractionDataOption) (n
 	return "", ""
 }
 
-// interactionResponder is the discordgo-backed Responder.
+// interactionResponder is the discordgo-backed Responder. A handler may call
+// Respond more than once (e.g. /waivers splitting a long round across
+// messages): the first call is the interaction response, every later one is a
+// follow-up message on the same interaction.
 type interactionResponder struct {
-	s *discordgo.Session
-	i *discordgo.InteractionCreate
+	s        *discordgo.Session
+	i        *discordgo.InteractionCreate
+	answered bool
 }
 
 func (r *interactionResponder) Respond(content string) error {
+	if r.answered {
+		_, err := r.s.FollowupMessageCreate(r.i.Interaction, false, &discordgo.WebhookParams{
+			Content: content,
+		})
+		return err
+	}
+	r.answered = true
 	return r.s.InteractionRespond(r.i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{Content: content},
