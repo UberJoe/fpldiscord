@@ -10,26 +10,45 @@ view shows the current season's live leaderboard sorted closest-to-21, busts las
 
 **Blocked by:** 05, 10
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `/bet` with no season shows the current season live-computed: per bettor 4
-      players + goals, total, status (`in` / `🕓` / `💥`), and the leader; `🏆` only
-      once GW38 is finished
-- [ ] `/bet <season>` shows the archived record statically
-- [ ] `/bet set` (admin) takes a bettor (Discord user) + 4 autocompleting player args
+- [x] `/bet` (subcommand `show`) with no season shows the current season
+      live-computed: per bettor 4 players + goals, total, status (`in` / `🕓` /
+      `💥`), and the leader; `🏆` only once GW38 is finished
+- [x] `/bet show <season>` shows the archived record statically
+- [x] `/bet set` (admin) takes a bettor (Discord user) + 4 autocompleting player args
       and replaces that bettor's current-season picks, stored by Discord user id
-- [ ] `/bet archive` (admin) takes a season, a free-text bettor name, and a
+- [x] `/bet archive` (admin) takes a season, a free-text bettor name, and a
       `Name:goals` list and stores a past-season record
-- [ ] Non-allowlisted callers are refused `/bet set` and `/bet archive`; the allowlist
+- [x] Non-allowlisted callers are refused `/bet set` and `/bet archive`; the allowlist
       is read from `ADMIN_IDS`
-- [ ] `web` declares a `MemberNamer` interface satisfied by `bot` (mutex-guarded
+- [x] `web` declares a `MemberNamer` interface satisfied by `bot` (mutex-guarded
       id→name cache, lazy `GuildMember`, ~1 h TTL, `StateEnabled` false); `app` injects
       it; `web` does not import `bot`
-- [ ] `GET /api/bet` returns `season` + pre-sorted `bettors[]` (`displayName`,
+- [x] `GET /api/bet` returns `season` + pre-sorted `bettors[]` (`displayName`,
       `picks[]` of 4 in slot order with `elementId`/`webName`/`goals`, `total`,
       `status`, `leader`); non-bust by total desc then bust last; `displayName` via
       `MemberNamer` with raw-id fallback, raw id not shipped; the ETag folds
       `storeGen`
-- [ ] The web Bet view shows the current season live, sorted closest-to-21 from below
+- [x] The web Bet view shows the current season live, sorted closest-to-21 from below
       with busts last, and polls at live cadence
-- [ ] seam-3 + seam-4 coverage
+- [x] seam-3 + seam-4 coverage
+
+**Notes:**
+
+- Discord forbids mixing a bare top-level arg with subcommands, so `bet` is
+  three subcommands — `show` (optional `season`), `set`, `archive`. `/bet show`
+  is the leaderboard; the dispatcher also treats a bare (subcommand-less) `bet`
+  as `show`.
+- `/bet` is ACK'd with a deferred response (`deferredCommands`), so rendering
+  bettor names (which can trigger lazy `GuildMember` REST calls) can't miss
+  Discord's 3-second window.
+- `web` imports `store` for the `store.BettorPicks` type that `bet.Leaderboard`
+  already takes — `store` is an import-graph leaf, no cycle; `web` still does
+  not import `bot`.
+- `bet.SnapshotGoals` adapts a hand-built snapshot to `bet.GoalSource` over the
+  exported `Bootstrap.Elements` (the snapshot's own `Element` index is only
+  built by `fpl.assemble`), matching the seam-safe pattern `handleManager` uses.
+- `/api/bet` resolves names concurrently and folds a `-partial` marker into the
+  ETag when any id fell back to its raw form, so a cold response never shares a
+  validator with the warm one that replaces it.

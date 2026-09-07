@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/UberJoe/fpldiscord/internal/fpl"
+	"github.com/UberJoe/fpldiscord/internal/store"
 )
 
 // SnapshotProvider is the read side of fpl.Store that web needs: the current
@@ -23,15 +24,46 @@ type SnapshotProvider interface {
 	Current() *fpl.Snapshot
 }
 
-// Server bundles the HTTP handler for the bot's web surface.
-type Server struct {
-	log  *slog.Logger
-	snap SnapshotProvider
+// PicksProvider is the read side of store.Store the bet endpoint needs: the
+// current-season picks and the generation counter that folds into the ETag. A
+// consumer-side interface so /api/bet can be driven by a fake in tests.
+type PicksProvider interface {
+	CurrentPicks(season string) ([]store.BettorPicks, error)
+	Gen() uint64
 }
 
-// New builds a Server.
+// MemberNamer resolves a Discord user id to a display name for the bet
+// leaderboard. It is a consumer-side interface satisfied by *bot.Bot (a
+// mutex-guarded id->name cache over lazy REST GuildMember lookups); app injects
+// the real implementation so web never imports bot. A nil MemberNamer, or a
+// miss, falls back to the raw id.
+type MemberNamer interface {
+	MemberName(discordUserID string) (string, bool)
+}
+
+// Server bundles the HTTP handler for the bot's web surface.
+type Server struct {
+	log    *slog.Logger
+	snap   SnapshotProvider
+	picks  PicksProvider
+	namer  MemberNamer
+	season string
+}
+
+// New builds a Server. The bet endpoint stays dormant until WithBet wires its
+// dependencies.
 func New(log *slog.Logger, snap SnapshotProvider) *Server {
 	return &Server{log: log, snap: snap}
+}
+
+// WithBet wires the /api/bet dependencies: the current-season picks source, the
+// Discord display-name resolver, and the season to report. It returns the
+// Server for chaining at the app wiring site.
+func (s *Server) WithBet(picks PicksProvider, namer MemberNamer, season string) *Server {
+	s.picks = picks
+	s.namer = namer
+	s.season = season
+	return s
 }
 
 // Handler returns the fully-wired http.Handler: /healthz, then the SPA file
@@ -42,6 +74,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/standings", s.handleStandings)
 	mux.HandleFunc("GET /api/manager/{entryId}", s.handleManager)
 	mux.HandleFunc("GET /api/waivers", s.handleWaivers)
+	mux.HandleFunc("GET /api/bet", s.handleBet)
 
 	sub, err := fs.Sub(distFS, "dist")
 	if err != nil {

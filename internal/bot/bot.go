@@ -7,10 +7,12 @@ package bot
 import (
 	"fmt"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 
 	"github.com/UberJoe/fpldiscord/internal/config"
 	"github.com/UberJoe/fpldiscord/internal/fpl"
+	"github.com/UberJoe/fpldiscord/internal/store"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -27,14 +29,44 @@ type SnapshotSource interface {
 	Current() *fpl.Snapshot
 }
 
+// BetStore is the slice of store.Store the bet command needs: read the current
+// picks and archived seasons, and write picks / archive rows. A consumer-side
+// interface so the /bet handlers can be exercised with a fake at seam 4.
+type BetStore interface {
+	CurrentPicks(season string) ([]store.BettorPicks, error)
+	SetPicks(season, discordUserID string, elements [4]int) error
+	ArchivedSeasons() ([]string, error)
+	Archive(season string) ([]store.ArchivedBettor, error)
+	AddArchive(season, bettorName string, picks [4]store.ArchivePick) error
+}
+
+// MemberNamer resolves a Discord user id to a guild display name. *Bot
+// implements it (a mutex-guarded id->name cache over lazy REST GuildMember
+// lookups); it is handed to the /bet leaderboard renderer and, via app, to the
+// web package.
+type MemberNamer interface {
+	MemberName(discordUserID string) (string, bool)
+}
+
 // cmdInput is what a command handler is given: the current fpl snapshot (nil
 // until snapshot #1), the interaction's command options, and the responder. It
-// is a plain value object, not a context.Context. Later tickets add the store /
-// bet dependencies here.
+// is a plain value object, not a context.Context.
+//
+// The remaining fields are only populated for grouped / gated commands (/bet):
+// sub is the invoked subcommand name; caller is the invoker's Discord user id;
+// betStore, season and isAdmin wire the bet game; namer resolves bettor ids to
+// display names.
 type cmdInput struct {
 	snap *fpl.Snapshot
 	opts cmdOptions
 	resp Responder
+
+	sub      string
+	caller   string
+	betStore BetStore
+	season   string
+	isAdmin  func(discordUserID string) bool
+	namer    MemberNamer
 }
 
 // cmdOptions holds an interaction's command options keyed by name. Values are
@@ -72,16 +104,25 @@ type Bot struct {
 	session    *discordgo.Session
 	log        *slog.Logger
 	devGuildID string
+	adminIDs   []string
+	season     string
 	snap       SnapshotSource
+	betStore   BetStore
 	handlers   map[string]handlerFunc
 	// autocomplete resolves the focused option of an autocomplete interaction,
 	// keyed by command name. Commands without an autocompleting arg are absent.
 	autocomplete map[string]acHandlerFunc
 	synced       atomic.Bool // set once the command sync has succeeded
+
+	// Member display-name cache for the /bet leaderboard (and, via app, the web
+	// /api/bet endpoint). guildID is captured from the first interaction seen.
+	nameMu    sync.Mutex
+	nameCache map[string]memberNameEntry
+	guildID   string
 }
 
 // New builds a Bot from config. The gateway is not opened until Open is called.
-func New(cfg config.Config, log *slog.Logger, snap SnapshotSource) (*Bot, error) {
+func New(cfg config.Config, log *slog.Logger, snap SnapshotSource, betStore BetStore) (*Bot, error) {
 	session, err := discordgo.New("Bot " + cfg.DiscordToken)
 	if err != nil {
 		return nil, fmt.Errorf("discordgo.New: %w", err)
@@ -95,7 +136,11 @@ func New(cfg config.Config, log *slog.Logger, snap SnapshotSource) (*Bot, error)
 		session:    session,
 		log:        log,
 		devGuildID: cfg.DevGuildID,
+		adminIDs:   cfg.AdminIDs,
+		season:     cfg.Season,
 		snap:       snap,
+		betStore:   betStore,
+		nameCache:  map[string]memberNameEntry{},
 		handlers: map[string]handlerFunc{
 			"dave":      handleDave,
 			"standings": handleStandings,
@@ -104,16 +149,29 @@ func New(cfg config.Config, log *slog.Logger, snap SnapshotSource) (*Bot, error)
 			"teamlist":  handleTeamlist,
 			"waivers":   handleWaivers,
 			"overview":  handleOverview,
+			"bet":       handleBet,
 		},
 		autocomplete: map[string]acHandlerFunc{
 			"owner":    autocompletePlayer,
 			"teamlist": autocompleteOwner,
+			"bet":      autocompletePlayer,
 		},
 	}
 
 	session.AddHandler(b.onInteraction)
 	session.AddHandler(b.onReady)
 	return b, nil
+}
+
+// isAdmin reports whether a Discord user id is on the configured admin
+// allowlist (ADMIN_IDS). It gates /bet set and /bet archive.
+func (b *Bot) isAdmin(discordUserID string) bool {
+	for _, id := range b.adminIDs {
+		if id == discordUserID {
+			return true
+		}
+	}
+	return false
 }
 
 // Open connects the gateway. discordgo services it on background goroutines, so
@@ -217,8 +275,85 @@ func commandSpecs() []*discordgo.ApplicationCommand {
 				},
 			},
 		},
+		{
+			Name:        "bet",
+			Description: "The season-long closest-to-21 goals bet",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "show",
+					Description: "Show the bet leaderboard (live, or a past season)",
+					Options: []*discordgo.ApplicationCommandOption{
+						{
+							Type:        discordgo.ApplicationCommandOptionString,
+							Name:        "season",
+							Description: "Past season to show, e.g. 2025/26 (omit for the current one)",
+							Required:    false,
+						},
+					},
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "set",
+					Description: "Admin: set or replace a bettor's four current-season picks",
+					Options: []*discordgo.ApplicationCommandOption{
+						{
+							Type:        discordgo.ApplicationCommandOptionUser,
+							Name:        "bettor",
+							Description: "The bettor whose picks these are",
+							Required:    true,
+						},
+						betPlayerOption("p1", "First pick"),
+						betPlayerOption("p2", "Second pick"),
+						betPlayerOption("p3", "Third pick"),
+						betPlayerOption("p4", "Fourth pick"),
+					},
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "archive",
+					Description: "Admin: record a completed past season",
+					Options: []*discordgo.ApplicationCommandOption{
+						{
+							Type:        discordgo.ApplicationCommandOptionString,
+							Name:        "season",
+							Description: "Season being archived, e.g. 2025/26",
+							Required:    true,
+						},
+						{
+							Type:        discordgo.ApplicationCommandOptionString,
+							Name:        "bettor_name",
+							Description: "Bettor's name (free text — they may have left the server)",
+							Required:    true,
+						},
+						{
+							Type:        discordgo.ApplicationCommandOptionString,
+							Name:        "entries",
+							Description: "Four Name:goals entries, comma-separated — e.g. Salah:19, Isak:23, Haaland:27, Palmer:15",
+							Required:    true,
+						},
+					},
+				},
+			},
+		},
 	}
 }
+
+// betPlayerOption builds one of the /bet set p1..p4 autocompleting player args.
+func betPlayerOption(name, desc string) *discordgo.ApplicationCommandOption {
+	return &discordgo.ApplicationCommandOption{
+		Type:         discordgo.ApplicationCommandOptionString,
+		Name:         name,
+		Description:  desc,
+		Required:     true,
+		Autocomplete: true,
+	}
+}
+
+// deferredCommands names the commands whose reply is ACK'd with a deferred
+// response first (a "thinking…" placeholder), so slower rendering — /bet's
+// member-name lookups — can't miss Discord's 3-second initial-response window.
+var deferredCommands = map[string]bool{"bet": true}
 
 // scoresGWMin is the /scores gw option minimum; discordgo wants a *float64.
 var scoresGWMin float64 = 1
@@ -250,6 +385,7 @@ func (b *Bot) onReady(s *discordgo.Session, r *discordgo.Ready) {
 // onInteraction routes an interaction: a slash-command invocation to its
 // handler, an autocomplete request to its resolver. Everything else is ignored.
 func (b *Bot) onInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	b.rememberGuild(i.GuildID)
 	switch i.Type {
 	case discordgo.InteractionApplicationCommand:
 		b.onCommand(s, i)
@@ -258,7 +394,9 @@ func (b *Bot) onInteraction(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 }
 
-// onCommand dispatches a slash-command invocation to its handler.
+// onCommand dispatches a slash-command invocation to its handler. A grouped
+// command (one whose sole top-level option is a subcommand — /bet) is flattened
+// here: the subcommand name goes to cmdInput.sub and its args become opts.
 func (b *Bot) onCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ApplicationCommandData()
 	h, ok := b.handlers[data.Name]
@@ -266,17 +404,61 @@ func (b *Bot) onCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		b.log.Warn("no handler for command", "command", data.Name)
 		return
 	}
-	opts := make(cmdOptions, len(data.Options))
-	for _, o := range data.Options {
+
+	sub := ""
+	srcOpts := data.Options
+	if len(srcOpts) == 1 && srcOpts[0].Type == discordgo.ApplicationCommandOptionSubCommand {
+		sub = srcOpts[0].Name
+		srcOpts = srcOpts[0].Options
+	}
+	opts := make(cmdOptions, len(srcOpts))
+	for _, o := range srcOpts {
 		opts[o.Name] = o.Value
 	}
-	in := &cmdInput{opts: opts, resp: &interactionResponder{s: s, i: i}}
+
+	// /bet renders bettor names, which can mean lazy REST member lookups; ACK
+	// with a deferred response so those cannot push the reply past Discord's
+	// 3-second initial-response window. The first Respond then edits the
+	// placeholder.
+	resp := &interactionResponder{s: s, i: i}
+	if deferredCommands[data.Name] {
+		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		}); err != nil {
+			b.log.Error("deferred ack failed", "command", data.Name, "err", err)
+		} else {
+			resp.deferred = true
+		}
+	}
+
+	in := &cmdInput{
+		opts:     opts,
+		resp:     resp,
+		sub:      sub,
+		caller:   interactionUserID(i),
+		betStore: b.betStore,
+		season:   b.season,
+		isAdmin:  b.isAdmin,
+		namer:    b,
+	}
 	if b.snap != nil {
 		in.snap = b.snap.Current()
 	}
 	if err := h(in); err != nil {
 		b.log.Error("command handler failed", "command", data.Name, "err", err)
 	}
+}
+
+// interactionUserID returns the invoking user's Discord id, from the guild
+// member (guild commands) or the top-level user (DM fallback).
+func interactionUserID(i *discordgo.InteractionCreate) string {
+	if i.Member != nil && i.Member.User != nil {
+		return i.Member.User.ID
+	}
+	if i.User != nil {
+		return i.User.ID
+	}
+	return ""
 }
 
 // onAutocomplete resolves the focused option of an autocomplete request and
@@ -310,12 +492,18 @@ func (b *Bot) onAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreat
 }
 
 // focusedOption returns the name and partial value of the option the user is
-// currently editing in an autocomplete interaction.
+// currently editing in an autocomplete interaction. It descends into a
+// subcommand's option list (/bet set p1..p4) so grouped commands resolve too.
 func focusedOption(opts []*discordgo.ApplicationCommandInteractionDataOption) (name, partial string) {
 	for _, o := range opts {
 		if o.Focused {
 			s, _ := o.Value.(string)
 			return o.Name, s
+		}
+		if len(o.Options) > 0 {
+			if n, p := focusedOption(o.Options); n != "" {
+				return n, p
+			}
 		}
 	}
 	return "", ""
@@ -324,10 +512,13 @@ func focusedOption(opts []*discordgo.ApplicationCommandInteractionDataOption) (n
 // interactionResponder is the discordgo-backed Responder. A handler may call
 // Respond more than once (e.g. /waivers splitting a long round across
 // messages): the first call is the interaction response, every later one is a
-// follow-up message on the same interaction.
+// follow-up message on the same interaction. When deferred is set the caller
+// has already sent a deferred ACK, so the first Respond edits that placeholder
+// instead of opening a fresh response.
 type interactionResponder struct {
 	s        *discordgo.Session
 	i        *discordgo.InteractionCreate
+	deferred bool
 	answered bool
 }
 
@@ -339,6 +530,12 @@ func (r *interactionResponder) Respond(content string) error {
 		return err
 	}
 	r.answered = true
+	if r.deferred {
+		_, err := r.s.InteractionResponseEdit(r.i.Interaction, &discordgo.WebhookEdit{
+			Content: &content,
+		})
+		return err
+	}
 	return r.s.InteractionRespond(r.i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{Content: content},

@@ -35,9 +35,33 @@ const (
 )
 
 // GoalSource resolves an element id to its player row, from which the display
-// name and cumulative season goals are read. *fpl.Snapshot satisfies it.
+// name and cumulative season goals are read. *fpl.Snapshot satisfies it, as
+// does the value returned by SnapshotGoals.
 type GoalSource interface {
 	Element(fpl.ElementID) (*fpl.Element, bool)
+}
+
+// SnapshotGoals adapts a snapshot to GoalSource over its exported
+// Bootstrap.Elements slice. The snapshot's own Element method reads an
+// unexported index that only fpl's internal assembler populates, so callers
+// that drive Leaderboard with a hand-built snapshot (the seam tests in web and
+// bot) must go through this to resolve players the way production does.
+func SnapshotGoals(snap *fpl.Snapshot) GoalSource {
+	byID := make(map[fpl.ElementID]*fpl.Element, len(snap.Bootstrap.Elements))
+	for i := range snap.Bootstrap.Elements {
+		e := &snap.Bootstrap.Elements[i]
+		byID[e.ID] = e
+	}
+	return snapshotGoals{byID: byID}
+}
+
+type snapshotGoals struct {
+	byID map[fpl.ElementID]*fpl.Element
+}
+
+func (g snapshotGoals) Element(id fpl.ElementID) (*fpl.Element, bool) {
+	e, ok := g.byID[id]
+	return e, ok
 }
 
 // Pick is one of a bettor's four players resolved against the snapshot.

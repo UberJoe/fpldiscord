@@ -13,7 +13,7 @@ import (
 // maps.
 func newTestBot() (*Bot, error) {
 	log := slog.New(slog.NewTextHandler(discardWriter{}, nil))
-	return New(config.Config{DiscordToken: "test-token"}, log, snapSource{})
+	return New(config.Config{DiscordToken: "test-token"}, log, snapSource{}, nil)
 }
 
 // snapSource is a SnapshotSource that has not built a snapshot yet.

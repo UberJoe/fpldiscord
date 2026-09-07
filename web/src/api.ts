@@ -73,6 +73,27 @@ export interface WaiversData {
   rows: WaiversRow[];
 }
 
+export interface BetPick {
+  elementId: number;
+  webName: string;
+  goals: number;
+}
+
+export type BetStatus = "in" | "provisionallyOut" | "bust";
+
+export interface BetBettor {
+  displayName: string;
+  picks: BetPick[]; // always 4, in slot order
+  total: number;
+  status: BetStatus;
+  leader: boolean;
+}
+
+export interface BetData {
+  season: string;
+  bettors: BetBettor[];
+}
+
 /** Raised for a 404 from /api/manager/{id} — the id isn't in this league. */
 export class NotFoundError extends Error {
   constructor(message = "not found") {
@@ -123,4 +144,9 @@ export function fetchManager(entryId: number): Promise<Envelope<ManagerData>> {
 export function fetchWaivers(gw?: number): Promise<Envelope<WaiversData>> {
   const q = gw === undefined ? "" : `?gw=${gw}`;
   return getEnvelope<WaiversData>(`/api/waivers${q}`);
+}
+
+/** Fetch the current season's live bet leaderboard (server pre-sorts it). */
+export function fetchBet(): Promise<Envelope<BetData>> {
+  return getEnvelope<BetData>("/api/bet");
 }

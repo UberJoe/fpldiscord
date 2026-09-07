@@ -293,3 +293,24 @@ func TestSeasonComplete(t *testing.T) {
 
 // *fpl.Snapshot must satisfy GoalSource so production wiring can pass it directly.
 var _ GoalSource = (*fpl.Snapshot)(nil)
+
+func TestSnapshotGoalsResolvesOverExportedElements(t *testing.T) {
+	snap := &fpl.Snapshot{Bootstrap: fpl.Bootstrap{Elements: []fpl.Element{
+		{ID: 7, WebName: "Haaland", GoalsScored: 9},
+		{ID: 8, WebName: "Salah", GoalsScored: 5},
+	}}}
+	gs := SnapshotGoals(snap)
+
+	if el, ok := gs.Element(7); !ok || el.WebName != "Haaland" || el.GoalsScored != 9 {
+		t.Errorf("Element(7) = %+v ok=%v, want Haaland / 9", el, ok)
+	}
+	if _, ok := gs.Element(99); ok {
+		t.Errorf("Element(99) resolved; want miss")
+	}
+
+	// Drives the full Leaderboard path off a hand-built snapshot.
+	board := Leaderboard(picksOf(bettor("u", [4]int{7, 8, 7, 8})), gs)
+	if board[0].Total != 28 {
+		t.Errorf("total = %d, want 28", board[0].Total)
+	}
+}

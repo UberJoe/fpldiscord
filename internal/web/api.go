@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
+	"github.com/UberJoe/fpldiscord/internal/bet"
 	"github.com/UberJoe/fpldiscord/internal/fpl"
 )
 
@@ -304,6 +306,136 @@ func buildWaivers(snap *fpl.Snapshot, gw int) waiversData {
 		})
 	}
 	return waiversData{GW: gw, Rows: rows}
+}
+
+// betData is GET /api/bet -> data: the current season's live bet leaderboard,
+// server-sorted closest-to-Target from below with busts last. Current season
+// only; a past season is a Discord-only view.
+type betData struct {
+	Season  string   `json:"season"`
+	Bettors []betRow `json:"bettors"`
+}
+
+// betRow is one leaderboard entry. displayName is resolved from the Discord
+// user id via MemberNamer with a raw-id fallback; the raw id itself never ships.
+type betRow struct {
+	DisplayName string    `json:"displayName"`
+	Picks       []betPick `json:"picks"` // always 4, in slot order
+	Total       int       `json:"total"`
+	Status      string    `json:"status"` // in / provisionallyOut / bust
+	Leader      bool      `json:"leader"`
+}
+
+// betPick is one of a bettor's four players: the element id, the accent-stripped
+// web name (as elsewhere in /api/*), and the player's cumulative season goals.
+type betPick struct {
+	ElementID int    `json:"elementId"`
+	WebName   string `json:"webName"`
+	Goals     int    `json:"goals"`
+}
+
+func (s *Server) handleBet(w http.ResponseWriter, r *http.Request) {
+	snap := requireSnapshot(w, s.snap)
+	if snap == nil {
+		return
+	}
+	if s.picks == nil {
+		// The bet subsystem was never wired (should not happen in a real
+		// deploy). Fail loud in the log, soft to the client.
+		s.log.Error("bet endpoint hit but no picks provider wired")
+		writeError(w, http.StatusServiceUnavailable, "bet unavailable")
+		return
+	}
+
+	picks, err := s.picks.CurrentPicks(s.season)
+	if err != nil {
+		s.log.Error("bet picks read failed", "season", s.season, "err", err)
+		writeError(w, http.StatusInternalServerError, "bet unavailable")
+		return
+	}
+
+	board := bet.Leaderboard(picks, bet.SnapshotGoals(snap))
+	data, allResolved := s.buildBet(board)
+
+	// The body depends on storeGen, the snapshot, and whether every bettor's
+	// name resolved. Fold the last into the ETag: a cold response full of
+	// raw-id fallbacks must not share a validator with the warm response that
+	// replaces it once the name cache fills.
+	etag := fmt.Sprintf("\"bet-%d-%d\"", s.picks.Gen(), snap.BuiltAt.Unix())
+	if !allResolved {
+		etag = fmt.Sprintf("\"bet-%d-%d-partial\"", s.picks.Gen(), snap.BuiltAt.Unix())
+	}
+	respondAPI(w, r, snap, etag, data)
+}
+
+// buildBet re-tags the computed bet.Bettor rows as camelCase JSON in the order
+// bet.Leaderboard already put them (non-bust by total desc, busts last). Each
+// Discord user id is resolved to a display name, falling back to the raw id
+// when the namer is absent or has no entry; the raw id is not shipped as its
+// own field. It also reports whether every id resolved, so the caller can keep
+// a partial (cold-cache) response from sharing an ETag with the warm one.
+func (s *Server) buildBet(board []bet.Bettor) (data betData, allResolved bool) {
+	names := s.resolveNames(board)
+	allResolved = true
+
+	rows := make([]betRow, 0, len(board))
+	for _, b := range board {
+		picks := make([]betPick, 0, len(b.Picks))
+		for _, p := range b.Picks {
+			picks = append(picks, betPick{
+				ElementID: int(p.ElementID),
+				WebName:   fpl.StripAccents(p.WebName),
+				Goals:     p.Goals,
+			})
+		}
+		name, ok := names[b.DiscordUserID]
+		if !ok || name == "" {
+			name, allResolved = b.DiscordUserID, false
+		}
+		rows = append(rows, betRow{
+			DisplayName: name,
+			Picks:       picks,
+			Total:       b.Total,
+			Status:      string(b.Status),
+			Leader:      b.Leader,
+		})
+	}
+	return betData{Season: s.season, Bettors: rows}, allResolved
+}
+
+// resolveNames looks up every bettor's display name through the injected
+// MemberNamer concurrently, so a cold name cache costs one round-trip's worth
+// of latency rather than one per bettor. Misses are simply absent from the map.
+func (s *Server) resolveNames(board []bet.Bettor) map[string]string {
+	out := make(map[string]string, len(board))
+	if s.namer == nil {
+		return out
+	}
+
+	ids := make([]string, 0, len(board))
+	seen := make(map[string]bool, len(board))
+	for _, b := range board {
+		if !seen[b.DiscordUserID] {
+			seen[b.DiscordUserID] = true
+			ids = append(ids, b.DiscordUserID)
+		}
+	}
+
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for _, id := range ids {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if name, ok := s.namer.MemberName(id); ok && name != "" {
+				mu.Lock()
+				out[id] = name
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	return out
 }
 
 // buildStandings re-tags fpl.LiveStandings() as camelCase JSON. All ordering,

@@ -55,7 +55,7 @@ func handleWaivers(in *cmdInput) error {
 	}
 
 	header := fmt.Sprintf("**GW%d waivers — %s**", gw, result)
-	for _, msg := range packWaiverMessages(header, blocks, maxDiscordMessage) {
+	for _, msg := range packCodeBlockMessages(header, blocks, maxDiscordMessage) {
 		if err := in.resp.Respond(msg); err != nil {
 			return err
 		}
@@ -171,11 +171,12 @@ func waiverName(s string) string {
 	return s
 }
 
-// packWaiverMessages lays the blocks into as few messages as possible, each a
-// monospace code block under limit, with header prepended to the first. A block
-// is kept whole where it fits; a block larger than a whole message is split on
-// its own line boundaries rather than truncated.
-func packWaiverMessages(header string, blocks []string, limit int) []string {
+// packCodeBlockMessages lays the blocks into as few messages as possible, each
+// a monospace code block under limit, with header prepended to the first. A
+// block is kept whole where it fits; a block larger than a whole message is
+// split on its own line boundaries rather than truncated. Shared by /waivers
+// and /bet so neither can produce a message that Discord rejects for length.
+func packCodeBlockMessages(header string, blocks []string, limit int) []string {
 	var msgs []string
 	var cur strings.Builder
 	started := false

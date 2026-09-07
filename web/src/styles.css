@@ -404,3 +404,113 @@ body {
 .wstatus.failed {
   color: var(--down);
 }
+
+/* --- Bet leaderboard --------------------------------------------------- */
+
+.bet-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 4px 2px 12px;
+}
+
+.bet-season {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.bet-target {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.bet-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.bet-row {
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.bet-row:last-child {
+  border-bottom: none;
+}
+
+.bet-row.bust {
+  color: var(--muted);
+}
+
+.bet-head {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.bettor {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bet-status {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.bet-status.in {
+  color: var(--up);
+}
+
+.bet-total {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 16px;
+  min-width: 2ch;
+  text-align: right;
+}
+
+.bet-leader {
+  font-size: 14px;
+}
+
+.bet-picks {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px 12px;
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.bet-picks .pick {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.bet-row.bust .bet-picks .pick {
+  color: var(--muted);
+}
+
+.bet-picks .pick.zero .pick-name {
+  color: var(--down);
+}
+
+.bet-picks .pick-goals {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}

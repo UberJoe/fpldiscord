@@ -76,12 +76,14 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, err
 	}
 
-	b, err := bot.New(cfg, log, snap)
+	b, err := bot.New(cfg, log, snap, betStore)
 	if err != nil {
 		return nil, err
 	}
 
-	srv := web.New(log, snap)
+	// web resolves bettor Discord ids to display names through the bot's
+	// member-name cache, injected here so web never imports bot.
+	srv := web.New(log, snap).WithBet(betStore, b, cfg.Season)
 	httpServer := &http.Server{
 		Addr:              net.JoinHostPort("", cfg.Port),
 		Handler:           srv.Handler(),
