@@ -29,6 +29,18 @@ type (
 	LeagueEntryID int
 )
 
+// Pos is a playing position, numbered as element_type is in bootstrap-static
+// (1=GK, 2=DEF, 3=MID, 4=FWD). Auto-sub selection reasons about squad shape in
+// these terms.
+type Pos int
+
+const (
+	PosGK  Pos = 1
+	PosDEF Pos = 2
+	PosMID Pos = 3
+	PosFWD Pos = 4
+)
+
 // LeagueMode is derived from league.scoring ("c" / "h"), never configured.
 type LeagueMode string
 

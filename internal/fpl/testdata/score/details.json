@@ -1,0 +1,10 @@
+{
+  "league": {"id": 64, "name": "Coq au Ian", "scoring": "c", "start_event": 1, "stop_event": 38},
+  "league_entries": [
+    {"id": 700, "entry_id": 500, "entry_name": "Tess XI", "short_name": "tx",
+     "player_first_name": "Tess", "player_last_name": "Ridge", "waiver_pick": 1}
+  ],
+  "standings": [
+    {"rank": 1, "last_rank": 1, "rank_sort": 1, "league_entry": 700, "total": 120, "event_total": 0}
+  ]
+}

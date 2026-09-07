@@ -340,9 +340,17 @@ func (l *LiveGW) UnmarshalJSON(raw []byte) error {
 
 // LiveElement is one player's live line for the GW. Stats are already summed
 // across all of the player's fixtures in the GW (relevant for double
-// gameweeks).
+// gameweeks). Explain links the line back to the fixture(s) that produced it,
+// which is how auto-subs tell whether a blanking starter's match is over.
 type LiveElement struct {
-	Stats LiveStats `json:"stats"`
+	Stats   LiveStats     `json:"stats"`
+	Explain []LiveExplain `json:"explain"`
+}
+
+// LiveExplain is one fixture's contribution to a player's live line. Only the
+// fixture id is needed here — to join to LiveFixture.FinishedProvisional.
+type LiveExplain struct {
+	Fixture int `json:"fixture"`
 }
 
 // LiveStats is the accumulated live scoring line. total_points and bonus are
@@ -411,12 +419,18 @@ type EntryEvent struct {
 
 // Pick is one squad slot. Position 1-11 is the submitted XI, 12-15 the bench
 // (12 is the locked backup GK).
+//
+// Pos is not in the wire payload: ManagerScore resolves it from
+// bootstrap-static before handing the picks to ApplyAutoSubs, which needs each
+// player's position to keep the auto-subbed XI a valid formation.
 type Pick struct {
 	Element       ElementID `json:"element"`
 	Position      int       `json:"position"`
 	IsCaptain     bool      `json:"is_captain"`
 	IsViceCaptain bool      `json:"is_vice_captain"`
 	Multiplier    int       `json:"multiplier"`
+
+	Pos Pos `json:"-"`
 }
 
 // Sub is one applied auto-substitution.

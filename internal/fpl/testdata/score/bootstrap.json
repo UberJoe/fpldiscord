@@ -1,0 +1,43 @@
+{
+  "elements": [
+    {"id": 101, "web_name": "Keeper1", "element_type": 1, "team": 1},
+    {"id": 102, "web_name": "Def1", "element_type": 2, "team": 1},
+    {"id": 103, "web_name": "Def2", "element_type": 2, "team": 1},
+    {"id": 104, "web_name": "Def3", "element_type": 2, "team": 1},
+    {"id": 105, "web_name": "Def4", "element_type": 2, "team": 2},
+    {"id": 106, "web_name": "Mid1", "element_type": 3, "team": 1},
+    {"id": 107, "web_name": "Mid2", "element_type": 3, "team": 1},
+    {"id": 108, "web_name": "Mid3", "element_type": 3, "team": 1},
+    {"id": 109, "web_name": "Mid4", "element_type": 3, "team": 2},
+    {"id": 110, "web_name": "Fwd1", "element_type": 4, "team": 1},
+    {"id": 111, "web_name": "Fwd2", "element_type": 4, "team": 1},
+    {"id": 112, "web_name": "Keeper2", "element_type": 1, "team": 2},
+    {"id": 113, "web_name": "Def5", "element_type": 2, "team": 1},
+    {"id": 114, "web_name": "Mid5", "element_type": 3, "team": 1},
+    {"id": 115, "web_name": "Fwd3", "element_type": 4, "team": 1}
+  ],
+  "element_types": [
+    {"id": 1, "plural": "Goalkeepers", "singular": "Goalkeeper", "plural_name": "goalkeepers"},
+    {"id": 2, "plural": "Defenders", "singular": "Defender", "plural_name": "defenders"},
+    {"id": 3, "plural": "Midfielders", "singular": "Midfielder", "plural_name": "midfielders"},
+    {"id": 4, "plural": "Forwards", "singular": "Forward", "plural_name": "forwards"}
+  ],
+  "teams": [
+    {"code": 3, "id": 1, "name": "Arsenal", "short_name": "ARS"},
+    {"code": 31, "id": 2, "name": "Crystal Palace", "short_name": "CRY"}
+  ],
+  "events": {
+    "current": 5,
+    "next": 6,
+    "data": [
+      {"id": 5, "name": "Gameweek 5", "deadline_time": "2026-09-19T17:30:00Z", "finished": false}
+    ]
+  },
+  "settings": {
+    "squad": {
+      "size": 15, "select_GKP": 2, "select_DEF": 5, "select_MID": 5, "select_FWD": 3, "play": 11,
+      "min_play_GKP": 1, "max_play_GKP": 1, "min_play_DEF": 3, "min_play_MID": 2, "min_play_FWD": 1,
+      "position_type_locks": {"12": "GKP"}, "captains_disabled": true
+    }
+  }
+}
