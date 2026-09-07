@@ -5,6 +5,7 @@
 package bot
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -101,14 +102,15 @@ type handlerFunc func(in *cmdInput) error
 
 // Bot owns the discordgo session and the command dispatch table.
 type Bot struct {
-	session    *discordgo.Session
-	log        *slog.Logger
-	devGuildID string
-	adminIDs   []string
-	season     string
-	snap       SnapshotSource
-	betStore   BetStore
-	handlers   map[string]handlerFunc
+	session               *discordgo.Session
+	log                   *slog.Logger
+	devGuildID            string
+	adminIDs              []string
+	season                string
+	notificationChannelID string
+	snap                  SnapshotSource
+	betStore              BetStore
+	handlers              map[string]handlerFunc
 	// autocomplete resolves the focused option of an autocomplete interaction,
 	// keyed by command name. Commands without an autocompleting arg are absent.
 	autocomplete map[string]acHandlerFunc
@@ -133,14 +135,15 @@ func New(cfg config.Config, log *slog.Logger, snap SnapshotSource, betStore BetS
 	session.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessages
 
 	b := &Bot{
-		session:    session,
-		log:        log,
-		devGuildID: cfg.DevGuildID,
-		adminIDs:   cfg.AdminIDs,
-		season:     cfg.Season,
-		snap:       snap,
-		betStore:   betStore,
-		nameCache:  map[string]memberNameEntry{},
+		session:               session,
+		log:                   log,
+		devGuildID:            cfg.DevGuildID,
+		adminIDs:              cfg.AdminIDs,
+		season:                cfg.Season,
+		notificationChannelID: cfg.NotificationChannelID,
+		snap:                  snap,
+		betStore:              betStore,
+		nameCache:             map[string]memberNameEntry{},
 		handlers: map[string]handlerFunc{
 			"dave":      handleDave,
 			"standings": handleStandings,
@@ -180,6 +183,13 @@ func (b *Bot) Open() error { return b.session.Open() }
 
 // Close disconnects the gateway.
 func (b *Bot) Close() error { return b.session.Close() }
+
+// RunReminder drives the daily waiver-reminder task until ctx is cancelled. app
+// starts it in the run phase once the gateway is open and cancels it on
+// shutdown. It posts to NOTIFICATION_CHANNEL_ID.
+func (b *Bot) RunReminder(ctx context.Context) {
+	newReminder(b.snap, b.session, b.notificationChannelID, b.log).Run(ctx)
+}
 
 // commandSpecs is the full desired command set sent to Discord on READY. Ticket
 // 01 ships only /dave; later tickets append their commands here.

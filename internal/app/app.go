@@ -8,6 +8,8 @@
 // Ticket 02 adds the fpl refresher goroutine, started in Run and stopped when
 // the run context is cancelled. Ticket 10 opens the SQLite bet store and runs
 // its migrations before Discord connects; a failed migration is a non-zero exit.
+// Ticket 12 adds the waiver-reminder goroutine, started once the gateway is open
+// and stopped before it closes.
 package app
 
 import (
@@ -102,11 +104,14 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 }
 
 // Run runs boot steps 4–7: start HTTP, start the fpl refresher, open Discord,
-// block on ctx, then shut down HTTP -> Discord. The refresher goroutine stops
-// on its own when refreshCtx is cancelled during shutdown.
+// start the waiver-reminder goroutine, block on ctx, then shut down
+// HTTP -> reminder -> refresher -> Discord. The refresher and reminder
+// goroutines each stop when their context is cancelled during shutdown.
 func (a *App) Run(ctx context.Context) error {
 	refreshCtx, stopRefresher := context.WithCancel(context.Background())
 	defer stopRefresher()
+	reminderCtx, stopReminder := context.WithCancel(context.Background())
+	defer stopReminder()
 
 	serverErr := make(chan error, 1)
 	go func() {
@@ -135,6 +140,13 @@ func (a *App) Run(ctx context.Context) error {
 	}
 	a.log.Info("discord gateway open")
 
+	reminderDone := make(chan struct{})
+	go func() {
+		defer close(reminderDone)
+		a.bot.RunReminder(reminderCtx)
+	}()
+	a.log.Info("waiver reminder started", "channel", a.cfg.NotificationChannelID)
+
 	var runErr error
 	select {
 	case <-ctx.Done():
@@ -147,6 +159,9 @@ func (a *App) Run(ctx context.Context) error {
 	}
 
 	a.shutdownHTTP()
+	stopReminder()
+	<-reminderDone
+	a.log.Info("waiver reminder stopped")
 	stopRefresher()
 	<-refresherDone
 	a.log.Info("fpl refresher stopped")
