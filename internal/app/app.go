@@ -56,7 +56,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, err
 	}
 
-	b, err := bot.New(cfg, log)
+	b, err := bot.New(cfg, log, store)
 	if err != nil {
 		return nil, err
 	}

@@ -6,6 +6,6 @@ package bot
 // replies the same for every caller, with no user check and no config key.
 const daveReply = "fuck you Dave"
 
-func handleDave(r Responder) error {
-	return r.Respond(daveReply)
+func handleDave(in *cmdInput) error {
+	return in.resp.Respond(daveReply)
 }

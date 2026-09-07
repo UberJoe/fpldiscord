@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	"github.com/UberJoe/fpldiscord/internal/config"
+	"github.com/UberJoe/fpldiscord/internal/fpl"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -20,21 +21,37 @@ type Responder interface {
 	Respond(content string) error
 }
 
-// handlerFunc is one command. Later tickets widen the signature with parsed
-// options and the fpl snapshot / store; ticket 01 only needs the responder.
-type handlerFunc func(r Responder) error
+// SnapshotSource is the read side of fpl.Store the bot needs: the current
+// snapshot, or nil before the first successful build.
+type SnapshotSource interface {
+	Current() *fpl.Snapshot
+}
+
+// cmdInput is what a command handler is given: the current fpl snapshot (nil
+// until snapshot #1) and the responder. It is a plain value object, not a
+// context.Context. Later tickets add parsed options and the store / bet
+// dependencies here.
+type cmdInput struct {
+	snap *fpl.Snapshot
+	resp Responder
+}
+
+// handlerFunc is one command handler, dispatched by name from the hand-rolled
+// map.
+type handlerFunc func(in *cmdInput) error
 
 // Bot owns the discordgo session and the command dispatch table.
 type Bot struct {
 	session    *discordgo.Session
 	log        *slog.Logger
 	devGuildID string
+	snap       SnapshotSource
 	handlers   map[string]handlerFunc
 	synced     atomic.Bool // set once the command sync has succeeded
 }
 
 // New builds a Bot from config. The gateway is not opened until Open is called.
-func New(cfg config.Config, log *slog.Logger) (*Bot, error) {
+func New(cfg config.Config, log *slog.Logger, snap SnapshotSource) (*Bot, error) {
 	session, err := discordgo.New("Bot " + cfg.DiscordToken)
 	if err != nil {
 		return nil, fmt.Errorf("discordgo.New: %w", err)
@@ -48,8 +65,10 @@ func New(cfg config.Config, log *slog.Logger) (*Bot, error) {
 		session:    session,
 		log:        log,
 		devGuildID: cfg.DevGuildID,
+		snap:       snap,
 		handlers: map[string]handlerFunc{
-			"dave": handleDave,
+			"dave":      handleDave,
+			"standings": handleStandings,
 		},
 	}
 
@@ -72,6 +91,10 @@ func commandSpecs() []*discordgo.ApplicationCommand {
 		{
 			Name:        "dave",
 			Description: "Responds with a message for whenever Dave pipes up",
+		},
+		{
+			Name:        "standings",
+			Description: "Show the classic total-points league table",
 		},
 	}
 }
@@ -108,7 +131,11 @@ func (b *Bot) onInteraction(s *discordgo.Session, i *discordgo.InteractionCreate
 		b.log.Warn("no handler for command", "command", name)
 		return
 	}
-	if err := h(&interactionResponder{s: s, i: i}); err != nil {
+	in := &cmdInput{resp: &interactionResponder{s: s, i: i}}
+	if b.snap != nil {
+		in.snap = b.snap.Current()
+	}
+	if err := h(in); err != nil {
 		b.log.Error("command handler failed", "command", name, "err", err)
 	}
 }

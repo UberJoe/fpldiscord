@@ -19,7 +19,7 @@ func (r *recordingResponder) Respond(content string) error {
 
 func TestHandleDave_RepliesUnconditionally(t *testing.T) {
 	r := &recordingResponder{}
-	if err := handleDave(r); err != nil {
+	if err := handleDave(&cmdInput{resp: r}); err != nil {
 		t.Fatalf("handleDave() error: %v", err)
 	}
 	if len(r.messages) != 1 || r.messages[0] != "fuck you Dave" {
@@ -39,12 +39,14 @@ type discardWriter struct{}
 
 func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }
 
-func TestCommandSpecs_ContainsDaveOnly(t *testing.T) {
-	specs := commandSpecs()
-	if len(specs) != 1 {
-		t.Fatalf("commandSpecs() len = %d, want 1", len(specs))
+func TestCommandSpecs_RegistersDaveAndStandings(t *testing.T) {
+	got := map[string]bool{}
+	for _, s := range commandSpecs() {
+		got[s.Name] = true
 	}
-	if specs[0].Name != "dave" {
-		t.Errorf("command name = %q, want dave", specs[0].Name)
+	for _, want := range []string{"dave", "standings"} {
+		if !got[want] {
+			t.Errorf("commandSpecs() missing %q; have %v", want, got)
+		}
 	}
 }
