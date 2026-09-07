@@ -107,15 +107,16 @@ func SeasonComplete(snap *fpl.Snapshot) bool {
 		snap.Game.CurrentEventFinished
 }
 
-// markLeader sets Leader on the "in" bettors with the highest total. A total of
-// exactly Target is the highest a non-bust bettor can reach, so it wins outright
-// with no special case; equal-highest totals are marked joint. Provisionally-out
-// and bust bettors are never leaders, so an all-bust (or all-provisionally-out)
-// board has no leader.
+// markLeader sets Leader on the non-bust bettors with the highest total —
+// closest to Target without going over. A pick still on zero (provisionallyOut)
+// does not remove a bettor from contention, since it flips back automatically
+// once that player scores; only a bust does. A total of exactly Target is the
+// highest a non-bust bettor can reach, so it wins outright with no special case;
+// equal-highest totals are marked joint. An all-bust board has no leader.
 func markLeader(bs []Bettor) {
 	best := -1
 	for _, b := range bs {
-		if b.Status == StatusIn && b.Total > best {
+		if b.Status != StatusBust && b.Total > best {
 			best = b.Total
 		}
 	}
@@ -123,7 +124,7 @@ func markLeader(bs []Bettor) {
 		return
 	}
 	for i := range bs {
-		if bs[i].Status == StatusIn && bs[i].Total == best {
+		if bs[i].Status != StatusBust && bs[i].Total == best {
 			bs[i].Leader = true
 		}
 	}

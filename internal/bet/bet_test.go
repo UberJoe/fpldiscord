@@ -153,19 +153,59 @@ func TestLeaderGenuineTiesAreJoint(t *testing.T) {
 	}
 }
 
-func TestNoLeaderWhenNobodyIsIn(t *testing.T) {
+func TestLeaderIsClosestToTargetAmongProvisionallyOut(t *testing.T) {
+	// Nobody is fully "in" (every bettor has a pick on zero), so the leader is
+	// whichever provisionally-out bettor is closest to Target from below.
 	goals := fakeGoals{
 		1: {"", 9}, 2: {"", 9}, 3: {"", 9}, 4: {"", 1}, // 28, bust
-		10: {"", 5}, 11: {"", 5}, 12: {"", 5}, 13: {"", 0}, // 15, provisionallyOut
+		10: {"", 8}, 11: {"", 7}, 12: {"", 5}, 13: {"", 0}, // 20, provisionallyOut <- leader
+		20: {"", 4}, 21: {"", 4}, 22: {"", 4}, 23: {"", 0}, // 12, provisionallyOut
 	}
 	board := Leaderboard(picksOf(
 		bettor("bust", [4]int{1, 2, 3, 4}),
-		bettor("provout", [4]int{10, 11, 12, 13}),
+		bettor("twenty", [4]int{10, 11, 12, 13}),
+		bettor("twelve", [4]int{20, 21, 22, 23}),
+	), goals)
+
+	for _, b := range board {
+		want := b.DiscordUserID == "twenty"
+		if b.Leader != want {
+			t.Errorf("%s: Leader=%v, want %v", b.DiscordUserID, b.Leader, want)
+		}
+	}
+}
+
+func TestProvisionallyOutCanOutLeadAnInBettor(t *testing.T) {
+	goals := fakeGoals{
+		1: {"", 5}, 2: {"", 5}, 3: {"", 4}, 4: {"", 4}, // 18, in
+		10: {"", 9}, 11: {"", 6}, 12: {"", 5}, 13: {"", 0}, // 20, provisionallyOut <- leader
+	}
+	board := Leaderboard(picksOf(
+		bettor("eighteen-in", [4]int{1, 2, 3, 4}),
+		bettor("twenty-provout", [4]int{10, 11, 12, 13}),
+	), goals)
+
+	for _, b := range board {
+		want := b.DiscordUserID == "twenty-provout"
+		if b.Leader != want {
+			t.Errorf("%s: Leader=%v, want %v (closest to Target wins regardless of the zero-pick flag)", b.DiscordUserID, b.Leader, want)
+		}
+	}
+}
+
+func TestNoLeaderWhenAllBust(t *testing.T) {
+	goals := fakeGoals{
+		1: {"", 9}, 2: {"", 9}, 3: {"", 9}, 4: {"", 1}, // 28, bust
+		10: {"", 8}, 11: {"", 8}, 12: {"", 8}, 13: {"", 1}, // 25, bust
+	}
+	board := Leaderboard(picksOf(
+		bettor("a", [4]int{1, 2, 3, 4}),
+		bettor("b", [4]int{10, 11, 12, 13}),
 	), goals)
 
 	for _, b := range board {
 		if b.Leader {
-			t.Errorf("%s marked leader; nobody is 'in' so there is no leader", b.DiscordUserID)
+			t.Errorf("%s marked leader; every bettor is bust so there is no leader", b.DiscordUserID)
 		}
 	}
 }
