@@ -6,8 +6,8 @@
 // server, open the Discord gateway (BulkOverwrite runs on READY inside bot),
 // then block until the context is cancelled and shut down HTTP -> Discord.
 // Ticket 02 adds the fpl refresher goroutine, started in Run and stopped when
-// the run context is cancelled. Opening the SQLite store and running migrations
-// lands in ticket 10.
+// the run context is cancelled. Ticket 10 opens the SQLite bet store and runs
+// its migrations before Discord connects; a failed migration is a non-zero exit.
 package app
 
 import (
@@ -22,6 +22,7 @@ import (
 	"github.com/UberJoe/fpldiscord/internal/bot"
 	"github.com/UberJoe/fpldiscord/internal/config"
 	"github.com/UberJoe/fpldiscord/internal/fpl"
+	"github.com/UberJoe/fpldiscord/internal/store"
 	"github.com/UberJoe/fpldiscord/internal/web"
 )
 
@@ -32,13 +33,15 @@ const snapshotOneBudget = 30 * time.Second
 // shutdownGrace bounds the graceful HTTP shutdown.
 const shutdownGrace = 10 * time.Second
 
-// App is the wired-up process: HTTP server, Discord bot, fpl snapshot refresher.
+// App is the wired-up process: HTTP server, Discord bot, fpl snapshot refresher,
+// SQLite bet store.
 type App struct {
 	log        *slog.Logger
 	cfg        config.Config
 	httpServer *http.Server
 	bot        *bot.Bot
 	refresher  *fpl.Refresher
+	betStore   *store.Store
 }
 
 // New runs boot steps 1–3: logger + effective-config log, then snapshot #1
@@ -49,31 +52,50 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogSlogLevel()}))
 	cfg.LogEffective(log)
 
-	store := fpl.NewStore()
+	// Open the bet DB and run migrations before Discord connects: a bad
+	// migration must stop the release, not half-serve.
+	betStore, err := store.Open(cfg.DBPath)
+	if err != nil {
+		return nil, err
+	}
+	log.Info("bet store opened", "path", cfg.DBPath)
+
+	// Anything that fails after this point must close the DB it just opened;
+	// clearing ok on the way to a successful return disarms the cleanup.
+	ok := false
+	defer func() {
+		if !ok {
+			betStore.Close()
+		}
+	}()
+
+	snap := fpl.NewStore()
 	client := fpl.NewClient(cfg.LeagueID)
-	refresher := fpl.NewRefresher(client, store, log)
+	refresher := fpl.NewRefresher(client, snap, log)
 	if err := refresher.Bootstrap(ctx, snapshotOneBudget); err != nil {
 		return nil, err
 	}
 
-	b, err := bot.New(cfg, log, store)
+	b, err := bot.New(cfg, log, snap)
 	if err != nil {
 		return nil, err
 	}
 
-	srv := web.New(log, store)
+	srv := web.New(log, snap)
 	httpServer := &http.Server{
 		Addr:              net.JoinHostPort("", cfg.Port),
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
+	ok = true
 	return &App{
 		log:        log,
 		cfg:        cfg,
 		httpServer: httpServer,
 		bot:        b,
 		refresher:  refresher,
+		betStore:   betStore,
 	}, nil
 }
 
@@ -106,6 +128,7 @@ func (a *App) Run(ctx context.Context) error {
 		stopRefresher()
 		<-refresherDone
 		a.shutdownHTTP()
+		a.betStore.Close()
 		return err
 	}
 	a.log.Info("discord gateway open")
@@ -129,6 +152,11 @@ func (a *App) Run(ctx context.Context) error {
 		a.log.Error("discord close failed", "err", err)
 	} else {
 		a.log.Info("discord gateway closed")
+	}
+	if err := a.betStore.Close(); err != nil {
+		a.log.Error("bet store close failed", "err", err)
+	} else {
+		a.log.Info("bet store closed")
 	}
 	return runErr
 }
