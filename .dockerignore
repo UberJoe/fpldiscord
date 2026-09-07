@@ -1,8 +1,6 @@
 .git
 .scratch
 legacy/
-draft/
-fonts/
 web/node_modules
 internal/web/dist
 *.db

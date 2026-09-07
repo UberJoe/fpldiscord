@@ -22,8 +22,9 @@
 web/node_modules/
 web/dist/
 
-# --- Python legacy (still at draft/ until the ticket-13 cutover) ---
-draft/test.py
+# --- Python legacy (quarantined under legacy/ at the ticket-13 cutover;
+#     deleted once parity-checklist.md is fully ticked) ---
+legacy/draft/test.py
 __pycache__/
 venv/
 pyvenv.cfg
