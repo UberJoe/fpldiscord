@@ -28,12 +28,32 @@ type SnapshotSource interface {
 }
 
 // cmdInput is what a command handler is given: the current fpl snapshot (nil
-// until snapshot #1) and the responder. It is a plain value object, not a
-// context.Context. Later tickets add parsed options and the store / bet
-// dependencies here.
+// until snapshot #1), the interaction's command options, and the responder. It
+// is a plain value object, not a context.Context. Later tickets add the store /
+// bet dependencies here.
 type cmdInput struct {
 	snap *fpl.Snapshot
+	opts cmdOptions
 	resp Responder
+}
+
+// cmdOptions holds an interaction's command options keyed by name. Values are
+// the raw discordgo option values.
+type cmdOptions map[string]any
+
+// Int returns a named integer option. discordgo delivers integer options as
+// float64 (JSON numbers); a missing or non-numeric option returns ok=false.
+func (o cmdOptions) Int(name string) (int, bool) {
+	switch n := o[name].(type) {
+	case int:
+		return n, true
+	case int64:
+		return int(n), true
+	case float64:
+		return int(n), true
+	default:
+		return 0, false
+	}
 }
 
 // handlerFunc is one command handler, dispatched by name from the hand-rolled
@@ -69,6 +89,7 @@ func New(cfg config.Config, log *slog.Logger, snap SnapshotSource) (*Bot, error)
 		handlers: map[string]handlerFunc{
 			"dave":      handleDave,
 			"standings": handleStandings,
+			"scores":    handleScores,
 		},
 	}
 
@@ -96,8 +117,25 @@ func commandSpecs() []*discordgo.ApplicationCommand {
 			Name:        "standings",
 			Description: "Show the classic total-points league table",
 		},
+		{
+			Name:        "scores",
+			Description: "Show every manager's live gameweek points (auto-subs applied)",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionInteger,
+					Name:        "gw",
+					Description: "Gameweek to show (defaults to the current one)",
+					MinValue:    &scoresGWMin,
+					MaxValue:    38,
+					Required:    false,
+				},
+			},
+		},
 	}
 }
+
+// scoresGWMin is the /scores gw option minimum; discordgo wants a *float64.
+var scoresGWMin float64 = 1
 
 // onReady runs one ApplicationCommandBulkOverwrite — Discord diffs the set
 // server-side. Guild-scoped (instant) when DEV_GUILD_ID is set, else global
@@ -125,18 +163,22 @@ func (b *Bot) onInteraction(s *discordgo.Session, i *discordgo.InteractionCreate
 	if i.Type != discordgo.InteractionApplicationCommand {
 		return
 	}
-	name := i.ApplicationCommandData().Name
-	h, ok := b.handlers[name]
+	data := i.ApplicationCommandData()
+	h, ok := b.handlers[data.Name]
 	if !ok {
-		b.log.Warn("no handler for command", "command", name)
+		b.log.Warn("no handler for command", "command", data.Name)
 		return
 	}
-	in := &cmdInput{resp: &interactionResponder{s: s, i: i}}
+	opts := make(cmdOptions, len(data.Options))
+	for _, o := range data.Options {
+		opts[o.Name] = o.Value
+	}
+	in := &cmdInput{opts: opts, resp: &interactionResponder{s: s, i: i}}
 	if b.snap != nil {
 		in.snap = b.snap.Current()
 	}
 	if err := h(in); err != nil {
-		b.log.Error("command handler failed", "command", name, "err", err)
+		b.log.Error("command handler failed", "command", data.Name, "err", err)
 	}
 }
 

@@ -3,6 +3,7 @@ package web
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/UberJoe/fpldiscord/internal/fpl"
@@ -121,6 +122,106 @@ func (s *Server) handleStandings(w http.ResponseWriter, r *http.Request) {
 	}
 	etag := fmt.Sprintf("\"standings-%d\"", snap.BuiltAt.Unix())
 	respondAPI(w, r, snap, etag, buildStandings(snap))
+}
+
+// managerData is GET /api/manager/{entryId} -> data: one manager's full
+// gameweek squad with auto-subs resolved. Standalone — no fixtures, goalscorer
+// lists or bonus breakdown. Only EntryID crosses the wire; LeagueEntryID is
+// resolved server-side.
+type managerData struct {
+	EntryID     int             `json:"entryId"`
+	OwnerName   string          `json:"ownerName"`
+	GW          int             `json:"gw"`
+	Provisional bool            `json:"provisional"`
+	Total       int             `json:"total"`
+	Players     []managerPlayer `json:"players"`
+}
+
+// managerPlayer is the camelCase JSON projection of fpl.SquadPlayer. The client
+// groups XI-then-bench and orders within each group by pos then squadSlot.
+type managerPlayer struct {
+	ElementID     int    `json:"elementId"`
+	WebName       string `json:"webName"`
+	TeamShort     string `json:"teamShort"`
+	Pos           int    `json:"pos"` // 1=GK 2=DEF 3=MID 4=FWD
+	SquadSlot     int    `json:"squadSlot"`
+	Points        int    `json:"points"`
+	Minutes       int    `json:"minutes"`
+	InScoringXI   bool   `json:"inScoringXI"`
+	AutoSubbedIn  bool   `json:"autoSubbedIn"`
+	AutoSubbedOut bool   `json:"autoSubbedOut"`
+}
+
+func (s *Server) handleManager(w http.ResponseWriter, r *http.Request) {
+	snap := requireSnapshot(w, s.snap)
+	if snap == nil {
+		return
+	}
+
+	id, err := strconv.Atoi(r.PathValue("entryId"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "unknown manager")
+		return
+	}
+	entryID := fpl.EntryID(id)
+
+	// Resolve the membership row from the exported league_entries slice rather
+	// than the snapshot's unexported index, so this handler can be driven by a
+	// hand-built *fpl.Snapshot in tests (matching fpl's own seam-safe views).
+	var le *fpl.LeagueEntry
+	for i := range snap.LeagueDetails.LeagueEntries {
+		if snap.LeagueDetails.LeagueEntries[i].EntryID == entryID {
+			le = &snap.LeagueDetails.LeagueEntries[i]
+			break
+		}
+	}
+	if le == nil {
+		writeError(w, http.StatusNotFound, "unknown manager")
+		return
+	}
+
+	sq, err := snap.ManagerSquad(entryID, snap.CurrentGW)
+	if err != nil {
+		// A known manager the snapshot cannot score yet (no picks / no live
+		// feed). Rare mid-gameweek; a 404 keeps the endpoint standalone. The
+		// internal reason stays server-side — clients get a fixed string like
+		// the other 404s.
+		s.log.Warn("manager squad unavailable", "entryId", id, "err", err)
+		writeError(w, http.StatusNotFound, "manager unavailable")
+		return
+	}
+
+	etag := fmt.Sprintf("\"manager-%d-%d\"", id, snap.BuiltAt.Unix())
+	respondAPI(w, r, snap, etag, buildManager(le, sq))
+}
+
+// buildManager re-tags fpl.ManagerSquad as camelCase JSON. ownerName is the
+// manager's first name (as on the Standings rows); LeagueEntryID never leaves
+// the server.
+func buildManager(le *fpl.LeagueEntry, sq fpl.ManagerSquad) managerData {
+	players := make([]managerPlayer, 0, len(sq.Players))
+	for _, p := range sq.Players {
+		players = append(players, managerPlayer{
+			ElementID:     int(p.Element),
+			WebName:       p.WebName,
+			TeamShort:     p.TeamShort,
+			Pos:           int(p.Pos),
+			SquadSlot:     p.Slot,
+			Points:        p.Points,
+			Minutes:       p.Minutes,
+			InScoringXI:   p.InScoringXI,
+			AutoSubbedIn:  p.AutoSubbedIn,
+			AutoSubbedOut: p.AutoSubbedOut,
+		})
+	}
+	return managerData{
+		EntryID:     int(sq.EntryID),
+		OwnerName:   le.PlayerFirstName,
+		GW:          sq.GW,
+		Provisional: sq.Provisional,
+		Total:       sq.Total,
+		Players:     players,
+	}
 }
 
 // buildStandings re-tags fpl.LiveStandings() as camelCase JSON. All ordering,

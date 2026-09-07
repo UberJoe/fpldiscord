@@ -163,3 +163,119 @@ func TestManagerScore_PastGWNotCarriedIsAnError(t *testing.T) {
 		t.Fatal("ManagerScore for a GW the snapshot does not carry returned no error")
 	}
 }
+
+func TestManagerSquad_ResolvesFullSquadWithSubMarkers(t *testing.T) {
+	snap := loadScoreSnapshot(t)
+
+	sq, err := snap.ManagerSquad(EntryID(500), 0) // 0 -> current GW (5)
+	if err != nil {
+		t.Fatalf("ManagerSquad: %v", err)
+	}
+	if sq.GW != 5 {
+		t.Errorf("GW = %d, want 5", sq.GW)
+	}
+	if sq.Total != 43 {
+		t.Errorf("Total = %d, want 43 (same sum as ManagerScore)", sq.Total)
+	}
+	if !sq.Provisional {
+		t.Error("Provisional = false, want true (game.current_event_finished is false)")
+	}
+	if len(sq.Players) != 15 {
+		t.Fatalf("len(Players) = %d, want the full 15-man squad", len(sq.Players))
+	}
+	// Returned in ascending squad-slot order.
+	for i, p := range sq.Players {
+		if p.Slot != i+1 {
+			t.Fatalf("Players[%d].Slot = %d, want %d (slot order)", i, p.Slot, i+1)
+		}
+	}
+
+	by := func(el ElementID) SquadPlayer {
+		t.Helper()
+		for _, p := range sq.Players {
+			if p.Element == el {
+				return p
+			}
+		}
+		t.Fatalf("element %d not in squad", el)
+		return SquadPlayer{}
+	}
+
+	// Slot-5 DEF (105) blanked in a finished match -> subbed out, not scoring.
+	out := by(105)
+	if out.InScoringXI || !out.AutoSubbedOut || out.AutoSubbedIn {
+		t.Errorf("105 markers = inXI %v subOut %v subIn %v, want false/true/false",
+			out.InScoringXI, out.AutoSubbedOut, out.AutoSubbedIn)
+	}
+	if out.WebName != "Def4" || out.TeamShort != "CRY" {
+		t.Errorf("105 display = %q / %q, want \"Def4\" / \"CRY\"", out.WebName, out.TeamShort)
+	}
+
+	// Slot-13 DEF (113) came on and keeps its original bench slot.
+	in := by(113)
+	if !in.InScoringXI || !in.AutoSubbedIn || in.AutoSubbedOut {
+		t.Errorf("113 markers = inXI %v subIn %v subOut %v, want true/true/false",
+			in.InScoringXI, in.AutoSubbedIn, in.AutoSubbedOut)
+	}
+	if in.Slot != 13 {
+		t.Errorf("113 Slot = %d, want 13 (original squad slot preserved)", in.Slot)
+	}
+
+	// Slot-9 MID (109) blanked but its match is unfinished -> stays in the XI.
+	stay := by(109)
+	if !stay.InScoringXI || stay.AutoSubbedOut {
+		t.Errorf("109 markers = inXI %v subOut %v, want true/false (match unfinished)",
+			stay.InScoringXI, stay.AutoSubbedOut)
+	}
+
+	// Unused bench players never count and are never marked subbed out.
+	for _, el := range []ElementID{112, 114, 115} {
+		b := by(el)
+		if b.InScoringXI || b.AutoSubbedOut {
+			t.Errorf("bench %d markers = inXI %v subOut %v, want false/false",
+				el, b.InScoringXI, b.AutoSubbedOut)
+		}
+	}
+
+	// Points are the live total_points verbatim (bonus already folded in).
+	if got := by(106).Points; got != 9 {
+		t.Errorf("106 Points = %d, want 9", got)
+	}
+}
+
+func TestManagerSquad_NotProvisionalOnceGWFinalised(t *testing.T) {
+	snap := scoreSnapshot(t, "entry-event-verbatim.json", "live.json")
+	snap.GWFinished = true // game.current_event_finished
+
+	sq, err := snap.ManagerSquad(EntryID(500), 5)
+	if err != nil {
+		t.Fatalf("ManagerSquad: %v", err)
+	}
+	if sq.Provisional {
+		t.Error("Provisional = true, want false once the GW is finalised")
+	}
+
+	// The verbatim sub 102 -> 113 is reflected in the markers.
+	for _, p := range sq.Players {
+		switch p.Element {
+		case 102:
+			if p.InScoringXI || !p.AutoSubbedOut {
+				t.Errorf("102 (verbatim out) markers = inXI %v subOut %v", p.InScoringXI, p.AutoSubbedOut)
+			}
+		case 113:
+			if !p.InScoringXI || !p.AutoSubbedIn {
+				t.Errorf("113 (verbatim in) markers = inXI %v subIn %v", p.InScoringXI, p.AutoSubbedIn)
+			}
+		}
+	}
+}
+
+func TestManagerSquad_UnknownEntryAndPastGWAreErrors(t *testing.T) {
+	snap := loadScoreSnapshot(t)
+	if _, err := snap.ManagerSquad(EntryID(9999), 5); err == nil {
+		t.Error("ManagerSquad(unknown entry) returned no error")
+	}
+	if _, err := snap.ManagerSquad(EntryID(500), 3); err == nil {
+		t.Error("ManagerSquad(GW the snapshot does not carry) returned no error")
+	}
+}

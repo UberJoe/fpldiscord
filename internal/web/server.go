@@ -40,6 +40,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
 	mux.HandleFunc("GET /api/standings", s.handleStandings)
+	mux.HandleFunc("GET /api/manager/{entryId}", s.handleManager)
 
 	sub, err := fs.Sub(distFS, "dist")
 	if err != nil {
@@ -84,6 +85,13 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// writeError writes a bare `{"error": msg}` body — the shape every /api/*
+// non-200 uses (the pre-snapshot 503 adds retryAfterMs on top). The message is
+// always a fixed string, never an internal error surfaced verbatim.
+func writeError(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, map[string]any{"error": msg})
 }
 
 // logRequests logs one line per request: method, path, status, duration.

@@ -39,12 +39,12 @@ type discardWriter struct{}
 
 func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }
 
-func TestCommandSpecs_RegistersDaveAndStandings(t *testing.T) {
+func TestCommandSpecs_RegistersCommands(t *testing.T) {
 	got := map[string]bool{}
 	for _, s := range commandSpecs() {
 		got[s.Name] = true
 	}
-	for _, want := range []string{"dave", "standings"} {
+	for _, want := range []string{"dave", "standings", "scores"} {
 		if !got[want] {
 			t.Errorf("commandSpecs() missing %q; have %v", want, got)
 		}

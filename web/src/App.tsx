@@ -25,7 +25,9 @@ function Placeholder({ label }: { label: string }) {
 
 function Body({ path }: { path: string }) {
   const managerId = matchManager(path);
-  if (managerId !== null) return <Manager entryId={managerId} />;
+  // key by id so navigating between two manager routes remounts the view and
+  // its poll starts fresh on the new endpoint.
+  if (managerId !== null) return <Manager key={managerId} entryId={managerId} />;
   switch (path) {
     case "/":
       return <Standings />;

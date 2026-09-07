@@ -35,6 +35,36 @@ export interface StandingsData {
   rows: StandingsRow[];
 }
 
+export interface ManagerPlayer {
+  elementId: number;
+  webName: string;
+  teamShort: string;
+  pos: number; // 1=GK 2=DEF 3=MID 4=FWD
+  squadSlot: number; // 1..15
+  points: number;
+  minutes: number;
+  inScoringXI: boolean;
+  autoSubbedIn: boolean;
+  autoSubbedOut: boolean;
+}
+
+export interface ManagerData {
+  entryId: number;
+  ownerName: string;
+  gw: number;
+  provisional: boolean;
+  total: number;
+  players: ManagerPlayer[];
+}
+
+/** Raised for a 404 from /api/manager/{id} — the id isn't in this league. */
+export class NotFoundError extends Error {
+  constructor(message = "not found") {
+    super(message);
+    this.name = "NotFoundError";
+  }
+}
+
 /** Raised for the pre-first-snapshot 503 so callers can show "starting up". */
 export class StartingUpError extends Error {
   retryAfterMs: number;
@@ -53,6 +83,9 @@ async function getEnvelope<T>(path: string): Promise<Envelope<T>> {
       typeof body.retryAfterMs === "number" ? body.retryAfterMs : 3000;
     throw new StartingUpError(retry);
   }
+  if (res.status === 404) {
+    throw new NotFoundError();
+  }
   if (!res.ok) {
     throw new Error(`${path}: HTTP ${res.status}`);
   }
@@ -61,4 +94,8 @@ async function getEnvelope<T>(path: string): Promise<Envelope<T>> {
 
 export function fetchStandings(): Promise<Envelope<StandingsData>> {
   return getEnvelope<StandingsData>("/api/standings");
+}
+
+export function fetchManager(entryId: number): Promise<Envelope<ManagerData>> {
+  return getEnvelope<ManagerData>(`/api/manager/${entryId}`);
 }
