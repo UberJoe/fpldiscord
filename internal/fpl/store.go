@@ -1,15 +1,13 @@
 package fpl
 
 import (
-	"context"
-	"fmt"
 	"sync/atomic"
 	"time"
 )
 
 // Store publishes the current Snapshot. Current() is lock-free and always
-// returns the last good snapshot; it returns nil only until the first successful
-// build.
+// returns the last good snapshot; it returns nil only until the first
+// successful build.
 type Store struct {
 	cur atomic.Pointer[Snapshot]
 }
@@ -37,36 +35,4 @@ func (s *Store) BuiltAt() (t time.Time, ok bool) {
 		return snap.BuiltAt, true
 	}
 	return time.Time{}, false
-}
-
-// BuildFirst attempts to build snapshot #1, retrying on failure until it
-// succeeds or the deadline is reached, and publishes it to the store. It returns
-// an error only if no build ever succeeds within the budget — the boot sequence
-// maps that to a non-zero exit so fly restarts the machine.
-func BuildFirst(ctx context.Context, c *Client, store *Store, budget time.Duration) error {
-	ctx, cancel := context.WithTimeout(ctx, budget)
-	defer cancel()
-
-	var lastErr error
-	backoff := time.Second
-	timer := time.NewTimer(backoff)
-	defer timer.Stop()
-	for {
-		snap, err := c.Build(ctx)
-		if err == nil {
-			store.Set(snap)
-			return nil
-		}
-		lastErr = err
-
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("snapshot #1 never succeeded within %s: %w", budget, lastErr)
-		case <-timer.C:
-		}
-		if backoff < 4*time.Second {
-			backoff *= 2
-		}
-		timer.Reset(backoff)
-	}
 }

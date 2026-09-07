@@ -1,0 +1,10 @@
+{
+  "picks": [
+    {"element": 13, "position": 1, "is_captain": false, "is_vice_captain": false, "multiplier": 1},
+    {"element": 12, "position": 2, "is_captain": false, "is_vice_captain": false, "multiplier": 1},
+    {"element": 11, "position": 3, "is_captain": false, "is_vice_captain": false, "multiplier": 1},
+    {"element": 14, "position": 12, "is_captain": false, "is_vice_captain": false, "multiplier": 1}
+  ],
+  "entry_history": {},
+  "subs": []
+}

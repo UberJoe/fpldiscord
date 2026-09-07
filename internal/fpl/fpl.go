@@ -1,32 +1,19 @@
-// Package fpl holds an immutable in-memory snapshot of the Draft FPL API. Every
-// downstream reader (Discord commands, the /api/* surface) is a pure function
-// over the current snapshot.
+// Package fpl holds one immutable in-memory snapshot of the Draft FPL API,
+// rebuilt on a schedule by a single refresher goroutine and served last-good
+// without locks. Every downstream reader (Discord commands, the /api/* surface)
+// is a pure function over the current snapshot, so all Draft API drift is
+// absorbed in this one package.
 //
-// Ticket 01 establishes only the spine: the id types, a Snapshot value, a Store
-// that hands out the last-good pointer lock-free, and Build() — one pass over the
-// public Draft endpoints that gates the HTTP listener at boot. The refresher
-// goroutine, per-endpoint TTLs, full struct parsing, the join indexes, and the
-// six derived views arrive in ticket 02.
+// Ticket 02 builds the spine: typed structs for every endpoint the MVP reads,
+// the join indexes between the two id spaces, event look-up by id, numeric-text
+// fields parsed on ingest, accent-stripped name slices for autocomplete, the
+// MatchLive / LeagueMode derivations, and the refresher with per-endpoint TTLs.
+// The six derived views and ApplyAutoSubs arrive in tickets 03+.
 package fpl
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"mime"
-	"net/http"
-	"strings"
 	"time"
 )
-
-// Base URL for every Draft FPL endpoint. All are public — no login, cookie, or
-// key. Overridable in tests.
-const defaultBaseURL = "https://draft.premierleague.com/api"
-
-// userAgent is a real identifying UA, per the Draft API research: error bodies
-// and edge-cache behaviour are friendlier when the client identifies itself.
-const userAgent = "fpldiscord/2.0 (+https://github.com/UberJoe/fpldiscord)"
 
 // Distinct id spaces. league_entries.id (LeagueEntryID) is NOT entry_id
 // (EntryID); matches/standings key on LeagueEntryID, while element-status.owner,
@@ -35,31 +22,12 @@ const userAgent = "fpldiscord/2.0 (+https://github.com/UberJoe/fpldiscord)"
 type (
 	// ElementID is a Draft player id (elements[].id).
 	ElementID int
-	// EntryID identifies a manager's entry (entry_id).
+	// EntryID identifies a manager's entry (entry_id) — the global team id.
 	EntryID int
 	// LeagueEntryID identifies a manager's membership row in this league
 	// (league_entries[].id).
 	LeagueEntryID int
 )
-
-// Snapshot is one immutable point-in-time view of the Draft FPL API. It is only
-// ever published through Store; readers must treat it as read-only.
-type Snapshot struct {
-	BuiltAt time.Time
-	// Stale is true when the most recent refresh failed and this is the
-	// previously-good data served again. Always false for a freshly built
-	// snapshot.
-	Stale bool
-
-	// Minimal derived fields for the ticket-01 startup summary. Ticket 02
-	// replaces these with the fully parsed Game / Bootstrap / LeagueDetails /
-	// ElementStatus / Transactions / Live structures plus the join indexes.
-	LeagueName   string
-	LeagueMode   LeagueMode
-	CurrentGW    int
-	GWFinished   bool
-	ElementCount int
-}
 
 // LeagueMode is derived from league.scoring ("c" / "h"), never configured.
 type LeagueMode string
@@ -69,117 +37,253 @@ const (
 	ModeH2H     LeagueMode = "h2h"
 )
 
-// Client fetches and assembles snapshots from the Draft FPL API.
-type Client struct {
-	http    *http.Client
-	baseURL string
-	// leagueID is carried verbatim into the /league/{id}/... paths.
-	leagueID string
+// modeFromScoring maps the league.scoring discriminator onto a LeagueMode.
+// Anything other than "h" is treated as classic.
+func modeFromScoring(scoring string) LeagueMode {
+	if scoring == "h" {
+		return ModeH2H
+	}
+	return ModeClassic
 }
 
-// NewClient builds a Client with a shared keep-alive HTTP client.
-func NewClient(leagueID string) *Client {
-	return &Client{
-		http:     &http.Client{Timeout: 15 * time.Second},
-		baseURL:  defaultBaseURL,
-		leagueID: leagueID,
-	}
+// PlayerName is one autocomplete candidate for a player-name argument: the
+// display name plus its accent-stripped form for matching.
+type PlayerName struct {
+	ID       ElementID
+	WebName  string // display form, e.g. "Højlund"
+	Stripped string // match form, e.g. "Hojlund"
 }
 
-// Build performs one pass over the public Draft endpoints and returns an
-// immutable Snapshot. The supplied context bounds the whole pass; callers give
-// it the boot snapshot-#1 budget (<=30s).
-func (c *Client) Build(ctx context.Context) (*Snapshot, error) {
-	var bootstrap struct {
-		Elements []json.RawMessage `json:"elements"`
-		Events   struct {
-			Current int `json:"current"`
-		} `json:"events"`
-	}
-	if err := c.getJSON(ctx, "/bootstrap-static", &bootstrap); err != nil {
-		return nil, fmt.Errorf("bootstrap-static: %w", err)
-	}
-
-	var game struct {
-		CurrentEvent         int  `json:"current_event"`
-		CurrentEventFinished bool `json:"current_event_finished"`
-		NextEvent            int  `json:"next_event"`
-	}
-	if err := c.getJSON(ctx, "/game", &game); err != nil {
-		return nil, fmt.Errorf("game: %w", err)
-	}
-
-	var details struct {
-		League struct {
-			Name    string `json:"name"`
-			Scoring string `json:"scoring"`
-		} `json:"league"`
-	}
-	if err := c.getJSON(ctx, "/league/"+c.leagueID+"/details", &details); err != nil {
-		return nil, fmt.Errorf("league details: %w", err)
-	}
-
-	currentGW := game.CurrentEvent
-	if currentGW == 0 {
-		// Null current_event before the season starts — fall back to next.
-		currentGW = game.NextEvent
-	}
-
-	mode := ModeClassic
-	if details.League.Scoring == "h" {
-		mode = ModeH2H
-	}
-
-	return &Snapshot{
-		BuiltAt:      time.Now().UTC(),
-		LeagueName:   details.League.Name,
-		LeagueMode:   mode,
-		CurrentGW:    currentGW,
-		GWFinished:   game.CurrentEventFinished,
-		ElementCount: len(bootstrap.Elements),
-	}, nil
+// OwnerName is one autocomplete candidate for an owner-name argument.
+type OwnerName struct {
+	EntryID  EntryID
+	Name     string // display form (player_first_name)
+	Stripped string
 }
 
-// getJSON issues a GET against baseURL+path, refuses anything that is not a
-// 200 with a JSON content-type before it reaches json.Unmarshal, and decodes
-// into v.
-func (c *Client) getJSON(ctx context.Context, path string, v any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Accept", "application/json")
+// Snapshot is one immutable point-in-time view of the Draft FPL API. It is only
+// ever published through Store; readers must treat every field as read-only.
+type Snapshot struct {
+	BuiltAt time.Time
+	// Stale is true when the most recent refresh cycle had at least one fetch
+	// failure and this snapshot carries some previous-cycle data. Always false
+	// for a fully successful build.
+	Stale bool
 
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
+	// Parsed endpoint payloads.
+	Game          Game
+	Bootstrap     Bootstrap
+	LeagueDetails LeagueDetails
+	ElementStatus []ElementStatus
+	Transactions  []Transaction
+	// Live is keyed by GW id. Ticket 02 populates only the current GW; past-GW
+	// entries are added lazily by later tickets.
+	Live map[int]LiveGW
+	// Entries is each league member's team for the current GW, keyed by the
+	// global EntryID.
+	Entries map[EntryID]EntryEvent
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status %d", resp.StatusCode)
-	}
-	if ct := resp.Header.Get("Content-Type"); !isJSON(ct) {
-		return fmt.Errorf("unexpected content-type %q (error bodies may be HTML)", ct)
-	}
-	if err := json.Unmarshal(body, v); err != nil {
-		return fmt.Errorf("decode: %w", err)
-	}
-	return nil
+	// Derived scalars, cheap to precompute once per build.
+	LeagueName   string
+	LeagueMode   LeagueMode
+	CurrentGW    int
+	GWFinished   bool
+	ElementCount int
+
+	// Autocomplete candidate slices, accent-stripped on build.
+	PlayerNames []PlayerName
+	OwnerNames  []OwnerName
+
+	// Join indexes. Unexported: readers go through the accessor methods so the
+	// two id spaces are never conflated by hand.
+	elementByID          map[ElementID]*Element
+	elementTypeByID      map[int]*ElementType
+	teamByID             map[int]*Team
+	eventByID            map[int]*Event
+	entryByEntryID       map[EntryID]*LeagueEntry
+	entryByLeagueEntryID map[LeagueEntryID]*LeagueEntry
+	ownerByElement       map[ElementID]*EntryID
 }
 
-func isJSON(contentType string) bool {
-	if contentType == "" {
+// pieces is the set of raw parsed payloads the refresher keeps between cycles so
+// it can refetch endpoints independently on their own TTLs and reassemble a
+// Snapshot without re-hitting everything.
+type pieces struct {
+	game      Game
+	bootstrap Bootstrap
+	details   LeagueDetails
+	status    []ElementStatus
+	txns      []Transaction
+	live      LiveGW
+	entries   map[EntryID]EntryEvent
+	currentGW int
+}
+
+// resolveCurrentGW returns the GW to treat as current: game.current_event, or
+// next_event when current_event is null/0 before the season's first deadline.
+func resolveCurrentGW(g Game) int {
+	if g.CurrentEvent != 0 {
+		return g.CurrentEvent
+	}
+	return g.NextEvent
+}
+
+// assemble builds an immutable Snapshot from a set of raw pieces: it wires the
+// join indexes, precomputes the derived scalars, derives MatchLive/LeagueMode,
+// and builds the accent-stripped autocomplete slices. It is pure — no I/O — so
+// it is exercised directly from fixtures.
+func assemble(p pieces, builtAt time.Time, stale bool) *Snapshot {
+	s := &Snapshot{
+		BuiltAt:       builtAt,
+		Stale:         stale,
+		Game:          p.game,
+		Bootstrap:     p.bootstrap,
+		LeagueDetails: p.details,
+		ElementStatus: p.status,
+		Transactions:  p.txns,
+		Live:          map[int]LiveGW{},
+		Entries:       p.entries,
+
+		LeagueName:   p.details.League.Name,
+		LeagueMode:   modeFromScoring(p.details.League.Scoring),
+		CurrentGW:    p.currentGW,
+		GWFinished:   p.game.CurrentEventFinished,
+		ElementCount: len(p.bootstrap.Elements),
+	}
+	if p.currentGW != 0 {
+		s.Live[p.currentGW] = p.live
+	}
+	if s.Entries == nil {
+		s.Entries = map[EntryID]EntryEvent{}
+	}
+
+	// Join indexes over the parsed payloads. Events come back 0-indexed with a
+	// 1-indexed id field, so keying on ev.ID (not slice position) is what makes
+	// Event(gw) correct.
+	s.elementByID = indexBy(s.Bootstrap.Elements, func(e *Element) ElementID { return e.ID })
+	s.elementTypeByID = indexBy(s.Bootstrap.ElementTypes, func(t *ElementType) int { return t.ID })
+	s.teamByID = indexBy(s.Bootstrap.Teams, func(t *Team) int { return t.ID })
+	s.eventByID = indexBy(s.Bootstrap.Events, func(e *Event) int { return e.ID })
+	s.entryByEntryID = indexBy(s.LeagueDetails.LeagueEntries, func(le *LeagueEntry) EntryID { return le.EntryID })
+	s.entryByLeagueEntryID = indexBy(s.LeagueDetails.LeagueEntries, func(le *LeagueEntry) LeagueEntryID { return le.ID })
+
+	s.ownerByElement = make(map[ElementID]*EntryID, len(s.ElementStatus))
+	for i := range s.ElementStatus {
+		es := &s.ElementStatus[i]
+		s.ownerByElement[es.Element] = es.Owner
+	}
+
+	s.PlayerNames = buildPlayerNames(s.Bootstrap.Elements)
+	s.OwnerNames = buildOwnerNames(s.LeagueDetails.LeagueEntries)
+
+	return s
+}
+
+// indexBy returns a map from key(&s[i]) to &s[i] for every element of s. The
+// pointers alias the caller's slice, which is safe here because an assembled
+// Snapshot is immutable once published.
+func indexBy[T any, K comparable](s []T, key func(*T) K) map[K]*T {
+	m := make(map[K]*T, len(s))
+	for i := range s {
+		row := &s[i]
+		m[key(row)] = row
+	}
+	return m
+}
+
+func buildPlayerNames(els []Element) []PlayerName {
+	out := make([]PlayerName, 0, len(els))
+	for _, e := range els {
+		out = append(out, PlayerName{
+			ID:       e.ID,
+			WebName:  e.WebName,
+			Stripped: stripAccents(e.WebName),
+		})
+	}
+	return out
+}
+
+func buildOwnerNames(entries []LeagueEntry) []OwnerName {
+	out := make([]OwnerName, 0, len(entries))
+	for _, le := range entries {
+		out = append(out, OwnerName{
+			EntryID:  le.EntryID,
+			Name:     le.PlayerFirstName,
+			Stripped: stripAccents(le.PlayerFirstName),
+		})
+	}
+	return out
+}
+
+// Element returns the player row for id.
+func (s *Snapshot) Element(id ElementID) (*Element, bool) {
+	e, ok := s.elementByID[id]
+	return e, ok
+}
+
+// ElementType returns the position lookup row for a 1..4 element_type id.
+func (s *Snapshot) ElementType(id int) (*ElementType, bool) {
+	t, ok := s.elementTypeByID[id]
+	return t, ok
+}
+
+// Team returns the club lookup row for a team id.
+func (s *Snapshot) Team(id int) (*Team, bool) {
+	t, ok := s.teamByID[id]
+	return t, ok
+}
+
+// Event returns the calendar row for a 1-indexed gameweek id — never by array
+// position.
+func (s *Snapshot) Event(id int) (*Event, bool) {
+	ev, ok := s.eventByID[id]
+	return ev, ok
+}
+
+// EntryByLeagueEntry resolves a LeagueEntryID (matches/standings space) to the
+// membership row.
+func (s *Snapshot) EntryByLeagueEntry(id LeagueEntryID) (*LeagueEntry, bool) {
+	le, ok := s.entryByLeagueEntryID[id]
+	return le, ok
+}
+
+// EntryByEntryID resolves a global EntryID (element-status/transactions/URL
+// space) to the membership row.
+func (s *Snapshot) EntryByEntryID(id EntryID) (*LeagueEntry, bool) {
+	le, ok := s.entryByEntryID[id]
+	return le, ok
+}
+
+// OwnerOf returns the league member who owns element id, joining
+// element_status.owner (an EntryID) to league_entries. ok is false for a free
+// agent or an unknown element.
+func (s *Snapshot) OwnerOf(id ElementID) (*LeagueEntry, bool) {
+	owner, ok := s.ownerByElement[id]
+	if !ok || owner == nil {
+		return nil, false
+	}
+	le, ok := s.entryByEntryID[*owner]
+	return le, ok
+}
+
+// LiveGW returns the live feed for a gameweek id, if the snapshot carries it.
+func (s *Snapshot) LiveGW(gw int) (LiveGW, bool) {
+	l, ok := s.Live[gw]
+	return l, ok
+}
+
+// MatchLive reports whether any fixture in the current GW has started and is not
+// yet finished-provisional — the single signal for refresher cadence and the
+// client poll-interval hint.
+func (s *Snapshot) MatchLive() bool {
+	live, ok := s.Live[s.CurrentGW]
+	if !ok {
 		return false
 	}
-	mt, _, err := mime.ParseMediaType(contentType)
-	if err != nil {
-		return false
+	for _, f := range live.Fixtures {
+		if f.Started && !f.FinishedProvisional {
+			return true
+		}
 	}
-	return mt == "application/json" || strings.HasSuffix(mt, "+json")
+	return false
 }

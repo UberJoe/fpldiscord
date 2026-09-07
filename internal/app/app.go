@@ -5,7 +5,9 @@
 // #1 with a <=30s budget (non-zero exit if it never succeeds), start the HTTP
 // server, open the Discord gateway (BulkOverwrite runs on READY inside bot),
 // then block until the context is cancelled and shut down HTTP -> Discord.
-// Opening the SQLite store and running migrations lands in ticket 10.
+// Ticket 02 adds the fpl refresher goroutine, started in Run and stopped when
+// the run context is cancelled. Opening the SQLite store and running migrations
+// lands in ticket 10.
 package app
 
 import (
@@ -30,13 +32,13 @@ const snapshotOneBudget = 30 * time.Second
 // shutdownGrace bounds the graceful HTTP shutdown.
 const shutdownGrace = 10 * time.Second
 
-// App is the wired-up process: HTTP server, Discord bot, fpl snapshot store.
+// App is the wired-up process: HTTP server, Discord bot, fpl snapshot refresher.
 type App struct {
 	log        *slog.Logger
 	cfg        config.Config
 	httpServer *http.Server
 	bot        *bot.Bot
-	store      *fpl.Store
+	refresher  *fpl.Refresher
 }
 
 // New runs boot steps 1–3: logger + effective-config log, then snapshot #1
@@ -49,16 +51,9 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 
 	store := fpl.NewStore()
 	client := fpl.NewClient(cfg.LeagueID)
-	if err := fpl.BuildFirst(ctx, client, store, snapshotOneBudget); err != nil {
+	refresher := fpl.NewRefresher(client, store, log)
+	if err := refresher.Bootstrap(ctx, snapshotOneBudget); err != nil {
 		return nil, err
-	}
-	if snap := store.Current(); snap != nil {
-		log.Info("snapshot #1 built",
-			"league", snap.LeagueName,
-			"mode", string(snap.LeagueMode),
-			"currentGw", snap.CurrentGW,
-			"elements", snap.ElementCount,
-		)
 	}
 
 	b, err := bot.New(cfg, log)
@@ -78,13 +73,17 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		cfg:        cfg,
 		httpServer: httpServer,
 		bot:        b,
-		store:      store,
+		refresher:  refresher,
 	}, nil
 }
 
-// Run runs boot steps 4–7: start HTTP, open Discord, block on ctx, then shut
-// down HTTP -> Discord.
+// Run runs boot steps 4–7: start HTTP, start the fpl refresher, open Discord,
+// block on ctx, then shut down HTTP -> Discord. The refresher goroutine stops
+// on its own when refreshCtx is cancelled during shutdown.
 func (a *App) Run(ctx context.Context) error {
+	refreshCtx, stopRefresher := context.WithCancel(context.Background())
+	defer stopRefresher()
+
 	serverErr := make(chan error, 1)
 	go func() {
 		a.log.Info("http listening", "addr", a.httpServer.Addr)
@@ -96,7 +95,16 @@ func (a *App) Run(ctx context.Context) error {
 		serverErr <- nil
 	}()
 
+	refresherDone := make(chan struct{})
+	go func() {
+		defer close(refresherDone)
+		a.refresher.Run(refreshCtx)
+	}()
+	a.log.Info("fpl refresher started", "interval", fpl.RefreshInterval.String())
+
 	if err := a.bot.Open(); err != nil {
+		stopRefresher()
+		<-refresherDone
 		a.shutdownHTTP()
 		return err
 	}
@@ -114,6 +122,9 @@ func (a *App) Run(ctx context.Context) error {
 	}
 
 	a.shutdownHTTP()
+	stopRefresher()
+	<-refresherDone
+	a.log.Info("fpl refresher stopped")
 	if err := a.bot.Close(); err != nil {
 		a.log.Error("discord close failed", "err", err)
 	} else {
