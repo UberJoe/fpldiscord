@@ -1,9 +1,16 @@
-# flyctl launch added from .gitignore
-**/draft/test.py
-**/draft/__pycache__/
-**/Lib/
-**/Scripts/
-**/pyvenv.cfg
-**/config.env
-**/venv/
-fly.toml
+.git
+.scratch
+legacy/
+draft/
+fonts/
+web/node_modules
+internal/web/dist
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+!.env.example
+*.md
+.github
+tmp/

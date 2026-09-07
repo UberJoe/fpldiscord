@@ -1,8 +1,34 @@
+# --- Go ---
+/fpldiscord
+/fpldiscord.exe
+*.test
+*.out
+
+# --- SQLite (local dev) ---
+*.db
+*.db-wal
+*.db-shm
+
+# --- local dev env ---
+.env
+.env.*
+!.env.example
+
+# --- built SPA (Vite outDir); placeholder index.html is tracked ---
+/internal/web/dist/*
+!/internal/web/dist/index.html
+
+# --- web toolchain ---
+web/node_modules/
+web/dist/
+
+# --- Python legacy (still at draft/ until the ticket-13 cutover) ---
 draft/test.py
 __pycache__/
 venv/
 pyvenv.cfg
 config.env
-fly.toml
+
+# --- misc ---
 tmp/
 .vscode/launch.json

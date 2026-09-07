@@ -1,0 +1,6 @@
+# Normalise line endings: LF in the repo for all text, so the Linux Docker
+# build and gofmt see consistent files regardless of contributor OS.
+* text=auto eol=lf
+*.png binary
+*.ttf binary
+*.ico binary
