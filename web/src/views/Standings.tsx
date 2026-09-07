@@ -1,9 +1,9 @@
 // View 1 — Standings, also the live-scores view. Every league manager in live
-// order (server pre-sorts by livePoints desc); each row shows the live total
-// (frozen total + live gameweek score), the gameweek points so far, and a
-// green/red arrow for live movement within the gameweek. All sorting and rank
-// maths are server-side — this renders array order only. Tapping a row opens the
-// manager drill-down route.
+// order (server pre-sorts by livePoints desc, ties sharing a rank); each row
+// shows the live total (frozen total + live gameweek score), the gameweek points
+// so far, and a green/red arrow for places moved since last week's final
+// standings. All sorting and rank maths are server-side — this renders array
+// order only. Tapping a row opens the manager drill-down route.
 
 import { fetchStandings, StandingsRow, StartingUpError } from "../api";
 import { usePoll } from "../usePoll";

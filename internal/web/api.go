@@ -96,22 +96,23 @@ func requireSnapshot(w http.ResponseWriter, snap SnapshotProvider) *fpl.Snapshot
 }
 
 // standingsData is GET /api/standings -> data: the server-sorted classic league
-// table with live-within-gameweek ranks. In h2h mode Rows is empty (never nil,
-// so it marshals as []).
+// table with joint live ranks and week-over-week movement arrows. In h2h mode
+// Rows is empty (never nil, so it marshals as []).
 type standingsData struct {
 	Rows []standingsRow `json:"rows"`
 }
 
 // standingsRow is the camelCase JSON projection of fpl.LiveStandingRow — already
-// ordered by live points desc by fpl. The client renders array order and does
-// no league-wide maths.
+// ordered by live points desc by fpl, with ties sharing a liveRank. The client
+// renders array order and does no league-wide maths.
 type standingsRow struct {
 	EntryID      int    `json:"entryId"`
 	OwnerName    string `json:"ownerName"`
 	EntryName    string `json:"entryName"`
-	OfficialRank int    `json:"officialRank"`
-	LiveRank     int    `json:"liveRank"`
-	Arrow        int    `json:"arrow"` // officialRank - liveRank; positive = moved up
+	OfficialRank int    `json:"officialRank"` // Draft standings rank; not used for the arrow, kept per ADR 0001
+	LastRank     int    `json:"lastRank"`     // Draft last_rank: position in last week's final standings; 0 = no previous position
+	LiveRank     int    `json:"liveRank"`     // joint 1..N, ties share a rank
+	Arrow        int    `json:"arrow"`        // lastRank - liveRank (0 when lastRank is 0); positive = moved up since last week
 	TotalPoints  int    `json:"totalPoints"`
 	LiveGwPoints int    `json:"liveGwPoints"`
 	LivePoints   int    `json:"livePoints"`
@@ -451,6 +452,7 @@ func buildStandings(snap *fpl.Snapshot) standingsData {
 			OwnerName:    r.OwnerName,
 			EntryName:    r.EntryName,
 			OfficialRank: r.OfficialRank,
+			LastRank:     r.LastRank,
 			LiveRank:     r.LiveRank,
 			Arrow:        r.Arrow,
 			TotalPoints:  r.TotalPoints,

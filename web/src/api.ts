@@ -24,8 +24,9 @@ export interface StandingsRow {
   ownerName: string;
   entryName: string;
   officialRank: number;
-  liveRank: number;
-  arrow: number;
+  lastRank: number; // position in last week's final standings; 0 = no previous position
+  liveRank: number; // joint rank — ties share it
+  arrow: number; // places moved since last week (lastRank − liveRank); 0 when lastRank is 0
   totalPoints: number;
   liveGwPoints: number;
   livePoints: number;
