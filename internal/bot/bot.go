@@ -18,10 +18,16 @@ import (
 )
 
 // Responder is the narrow output side a command handler needs: send one message
-// back to the caller. The real implementation talks to discordgo; tests pass a
-// fake that records what was sent.
+// back to the caller, as plain text or as a Discord embed. The real
+// implementation talks to discordgo; tests pass a fake that records what was
+// sent. A handler may call either method more than once — each call is one
+// Discord message.
 type Responder interface {
 	Respond(content string) error
+	// RespondEmbeds sends one message carrying up to 10 embeds. Rich-data
+	// replies (/standings, /scores, /overview) use this; short plain replies
+	// (startup, h2h-mode, bad option, empty window) stay on Respond.
+	RespondEmbeds(embeds []*discordgo.MessageEmbed) error
 }
 
 // SnapshotSource is the read side of fpl.Store the bot needs: the current
@@ -520,11 +526,12 @@ func focusedOption(opts []*discordgo.ApplicationCommandInteractionDataOption) (n
 }
 
 // interactionResponder is the discordgo-backed Responder. A handler may call
-// Respond more than once (e.g. /waivers splitting a long round across
-// messages): the first call is the interaction response, every later one is a
-// follow-up message on the same interaction. When deferred is set the caller
-// has already sent a deferred ACK, so the first Respond edits that placeholder
-// instead of opening a fresh response.
+// Respond or RespondEmbeds more than once (e.g. /waivers splitting a long round,
+// /overview spilling to a second message): the first call is the interaction
+// response, every later one is a follow-up message on the same interaction. When
+// deferred is set the caller has already sent a deferred ACK, so the first call
+// edits that placeholder instead of opening a fresh response. The answered flag
+// is shared across both methods, so mixing them keeps the same branching.
 type interactionResponder struct {
 	s        *discordgo.Session
 	i        *discordgo.InteractionCreate
@@ -549,5 +556,26 @@ func (r *interactionResponder) Respond(content string) error {
 	return r.s.InteractionRespond(r.i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{Content: content},
+	})
+}
+
+func (r *interactionResponder) RespondEmbeds(embeds []*discordgo.MessageEmbed) error {
+	if r.answered {
+		_, err := r.s.FollowupMessageCreate(r.i.Interaction, false, &discordgo.WebhookParams{
+			Embeds: embeds,
+		})
+		return err
+	}
+	r.answered = true
+	if r.deferred {
+		// WebhookEdit.Embeds is a pointer-to-slice, unlike the other two paths.
+		_, err := r.s.InteractionResponseEdit(r.i.Interaction, &discordgo.WebhookEdit{
+			Embeds: &embeds,
+		})
+		return err
+	}
+	return r.s.InteractionRespond(r.i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{Embeds: embeds},
 	})
 }

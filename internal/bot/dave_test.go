@@ -6,6 +6,7 @@ import (
 
 	"github.com/UberJoe/fpldiscord/internal/config"
 	"github.com/UberJoe/fpldiscord/internal/fpl"
+	"github.com/bwmarrin/discordgo"
 )
 
 // newTestBot builds a Bot with the real handler/autocomplete wiring but no
@@ -22,14 +23,22 @@ type snapSource struct{}
 func (snapSource) Current() *fpl.Snapshot { return nil }
 
 // recordingResponder is the seam-4 fake: it records what a handler tried to send
-// instead of talking to Discord.
+// instead of talking to Discord. Plain-text messages land in messages; each
+// RespondEmbeds call appends its embed slice to embeds, so a test can assert on
+// the number of messages and the structured fields of each.
 type recordingResponder struct {
 	messages []string
+	embeds   [][]*discordgo.MessageEmbed
 	err      error
 }
 
 func (r *recordingResponder) Respond(content string) error {
 	r.messages = append(r.messages, content)
+	return r.err
+}
+
+func (r *recordingResponder) RespondEmbeds(embeds []*discordgo.MessageEmbed) error {
+	r.embeds = append(r.embeds, embeds)
 	return r.err
 }
 
