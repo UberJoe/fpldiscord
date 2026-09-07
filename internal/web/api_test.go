@@ -57,9 +57,11 @@ func classicSnapshot() *fpl.Snapshot {
 				{ID: 1, EntryID: 500, EntryName: "Bruno Dos Tres", PlayerFirstName: "Joe"},
 				{ID: 2, EntryID: 600, EntryName: "Salah Days", PlayerFirstName: "Sam"},
 			},
+			// Draft's Total already includes EventTotal, so the frozen base the
+			// live table sorts on is Total-EventTotal: M1 110, M2 95.
 			Standings: []fpl.Standing{
-				{Rank: 1, LeagueEntry: 1, Total: 100, EventTotal: 12},
-				{Rank: 2, LeagueEntry: 2, Total: 90, EventTotal: 40},
+				{Rank: 1, LeagueEntry: 1, Total: 150, EventTotal: 40},
+				{Rank: 2, LeagueEntry: 2, Total: 130, EventTotal: 35},
 			},
 		},
 		Live: map[int]fpl.LiveGW{
@@ -453,7 +455,7 @@ func TestStandings_PreSortedByLivePointsWithRanksAndArrows(t *testing.T) {
 	first := rows[0].(map[string]any)
 	second := rows[1].(map[string]any)
 
-	// M2 is first on live points (90 + 20 = 110) despite official rank 2.
+	// M2 is first on live points (frozen 95 + 20 = 115) despite official rank 2.
 	if first["entryId"].(float64) != 600 {
 		t.Errorf("rows[0].entryId = %v, want 600 (M2)", first["entryId"])
 	}
@@ -466,19 +468,20 @@ func TestStandings_PreSortedByLivePointsWithRanksAndArrows(t *testing.T) {
 	if first["arrow"].(float64) != 1 {
 		t.Errorf("rows[0].arrow = %v, want 1", first["arrow"])
 	}
-	if first["totalPoints"].(float64) != 90 || first["liveGwPoints"].(float64) != 20 || first["livePoints"].(float64) != 110 {
-		t.Errorf("rows[0] points = total %v gw %v live %v, want 90 / 20 / 110",
+	if first["totalPoints"].(float64) != 95 || first["liveGwPoints"].(float64) != 20 || first["livePoints"].(float64) != 115 {
+		t.Errorf("rows[0] points = total %v gw %v live %v, want 95 / 20 / 115",
 			first["totalPoints"], first["liveGwPoints"], first["livePoints"])
 	}
 
-	// M1 drops to live rank 2 (100 + 0), arrow -1.
+	// M1 drops to live rank 2 (frozen 110 + 0), arrow -1.
 	if second["entryId"].(float64) != 500 {
 		t.Errorf("rows[1].entryId = %v, want 500 (M1)", second["entryId"])
 	}
 	if second["arrow"].(float64) != -1 {
 		t.Errorf("rows[1].arrow = %v, want -1", second["arrow"])
 	}
-	if second["liveGwPoints"].(float64) != 0 || second["livePoints"].(float64) != 100 {
-		t.Errorf("rows[1] points = gw %v live %v, want 0 / 100", second["liveGwPoints"], second["livePoints"])
+	if second["totalPoints"].(float64) != 110 || second["liveGwPoints"].(float64) != 0 || second["livePoints"].(float64) != 110 {
+		t.Errorf("rows[1] points = total %v gw %v live %v, want 110 / 0 / 110",
+			second["totalPoints"], second["liveGwPoints"], second["livePoints"])
 	}
 }

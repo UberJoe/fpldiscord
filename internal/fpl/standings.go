@@ -93,14 +93,22 @@ func (s *Snapshot) LiveStandings() []LiveStandingRow {
 			liveGw = ms.Total
 		}
 
+		// Draft's standings[].Total is the cumulative score *including* this
+		// gameweek's EventTotal (it keeps updating through the GW and stays put
+		// once it finishes, until the league rolls to the next GW). The live
+		// table wants the frozen base without the current GW, so we can add our
+		// own live figure back on top — adding to Total directly counts the
+		// gameweek twice and reorders the table.
+		frozen := st.Total - st.EventTotal
+
 		rows = append(rows, LiveStandingRow{
 			EntryID:      le.EntryID,
 			OwnerName:    le.PlayerFirstName,
 			EntryName:    le.EntryName,
 			OfficialRank: st.Rank,
-			TotalPoints:  st.Total,
+			TotalPoints:  frozen,
 			LiveGwPoints: liveGw,
-			LivePoints:   st.Total + liveGw,
+			LivePoints:   frozen + liveGw,
 		})
 	}
 
