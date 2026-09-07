@@ -349,8 +349,30 @@ type LiveElement struct {
 
 // LiveExplain is one fixture's contribution to a player's live line. Only the
 // fixture id is needed here — to join to LiveFixture.FinishedProvisional.
+//
+// The Draft /event/{gw}/live feed serialises each entry as a
+// [statsArray, fixtureId] tuple (the stats half drives the main-site scoring
+// breakdown and is unused here), not the {"fixture": N} object the main site
+// exposes, so decoding reads the trailing element of the tuple.
 type LiveExplain struct {
-	Fixture int `json:"fixture"`
+	Fixture int
+}
+
+// UnmarshalJSON reads the Draft tuple form [[{stat…}, …], fixtureId]. The stats
+// half is ignored; a null or malformed-length tuple leaves Fixture zero rather
+// than failing the whole live snapshot.
+func (e *LiveExplain) UnmarshalJSON(raw []byte) error {
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return nil
+	}
+	var tuple []json.RawMessage
+	if err := json.Unmarshal(raw, &tuple); err != nil {
+		return err
+	}
+	if len(tuple) < 2 {
+		return nil
+	}
+	return json.Unmarshal(tuple[len(tuple)-1], &e.Fixture)
 }
 
 // LiveStats is the accumulated live scoring line. total_points and bonus are

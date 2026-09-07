@@ -1,6 +1,6 @@
 {
   "elements": {
-    "101": {"stats": {"minutes": 0, "total_points": 0, "bonus": 0}, "explain": [{"fixture": 1}]},
+    "101": {"stats": {"minutes": 0, "total_points": 0, "bonus": 0}, "explain": [[[{"name": "Minutes played", "points": 0, "value": 0, "stat": "minutes"}], 1]]},
     "102": {"stats": {"minutes": 90, "total_points": 6, "bonus": 2}},
     "103": {"stats": {"minutes": 90, "total_points": 1, "bonus": 0}},
     "104": {"stats": {"minutes": 90, "total_points": 2, "bonus": 0}},
