@@ -58,18 +58,29 @@ type LiveStandingRow struct {
 	EntryID      EntryID
 	OwnerName    string
 	EntryName    string
-	OfficialRank int
-	LiveRank     int
-	Arrow        int // OfficialRank - LiveRank; positive = climbed within the GW
+	OfficialRank int // Draft standings rank; not used for Arrow, kept per ADR 0001 for the client's later use
+	LastRank     int // Draft last_rank: position in last week's final standings; 0 = no previous position
+	LiveRank     int // joint 1..N, ties share a rank and the next rank skips
+	Arrow        int // LastRank - LiveRank when LastRank != 0, else 0; positive = climbed since last week
 	TotalPoints  int // frozen season total, excludes the live GW
 	LiveGwPoints int // ManagerScore(EntryID, CurrentGW).Total
 	LivePoints   int // TotalPoints + LiveGwPoints
+
+	rankSort int // Draft rank_sort: strict tiebroken order, settles row order within a live-points tie
 }
 
 // LiveStandings returns the classic league table re-sorted by live points
-// (frozen season total plus this gameweek so far), with LiveRank and the
-// within-gameweek movement arrow assigned. All ordering and rank maths happen
-// here so the web client only renders array order.
+// (frozen season total plus this gameweek so far), with a joint LiveRank and
+// the week-over-week movement arrow assigned. All ordering and rank maths
+// happen here so the web client only renders array order.
+//
+// Ranking matches the official Draft table: managers level on live points share
+// a LiveRank and the next rank skips (1, 2, 2, 4). Row order within a tie is
+// settled by the Draft strict-sort field (rank_sort), not the order the API
+// returned rows in. The arrow is movement since last week's final standings —
+// LastRank compared to LiveRank — so it stays put through a gameweek in
+// progress and only reflects real net movement; a manager with no previous
+// position (LastRank == 0) shows a flat arrow.
 //
 // Classic only: nil in h2h mode, matching Standings. A manager whose gameweek
 // score cannot be computed yet (no picks submitted, or no live feed) counts as
@@ -106,23 +117,38 @@ func (s *Snapshot) LiveStandings() []LiveStandingRow {
 			OwnerName:    le.PlayerFirstName,
 			EntryName:    le.EntryName,
 			OfficialRank: st.Rank,
+			LastRank:     st.LastRank,
 			TotalPoints:  frozen,
 			LiveGwPoints: liveGw,
 			LivePoints:   frozen + liveGw,
+			rankSort:     st.RankSort,
 		})
 	}
 
-	// Live order: most live points first. Ties keep official-rank order so the
-	// result is deterministic.
+	// Live order: most live points first. A live-points tie is settled by the
+	// Draft strict-sort field so row order is deterministic and does not depend
+	// on the order the API returned the standings rows in. Stable so that, in
+	// the unlikely event rank_sort is ever absent, the fallback is the Draft
+	// slice order rather than something non-deterministic.
 	sort.SliceStable(rows, func(i, j int) bool {
 		if rows[i].LivePoints != rows[j].LivePoints {
 			return rows[i].LivePoints > rows[j].LivePoints
 		}
-		return rows[i].OfficialRank < rows[j].OfficialRank
+		return rows[i].rankSort < rows[j].rankSort
 	})
+
+	// Joint live rank: managers level on live points share a rank and the next
+	// rank skips (1, 2, 2, 4), matching the official Draft table. The arrow is
+	// movement since last week's final standings (LastRank -> LiveRank);
+	// LastRank == 0 (no previous position) shows flat.
 	for i := range rows {
 		rows[i].LiveRank = i + 1
-		rows[i].Arrow = rows[i].OfficialRank - rows[i].LiveRank
+		if i > 0 && rows[i].LivePoints == rows[i-1].LivePoints {
+			rows[i].LiveRank = rows[i-1].LiveRank
+		}
+		if rows[i].LastRank != 0 {
+			rows[i].Arrow = rows[i].LastRank - rows[i].LiveRank
+		}
 	}
 	return rows
 }

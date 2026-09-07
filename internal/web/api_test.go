@@ -58,10 +58,12 @@ func classicSnapshot() *fpl.Snapshot {
 				{ID: 2, EntryID: 600, EntryName: "Salah Days", PlayerFirstName: "Sam"},
 			},
 			// Draft's Total already includes EventTotal, so the frozen base the
-			// live table sorts on is Total-EventTotal: M1 110, M2 95.
+			// live table sorts on is Total-EventTotal: M1 110, M2 95. last_rank
+			// mirrors the official rank (nobody moved last week), so the
+			// week-over-week arrow matches the live re-sort's +1 / -1.
 			Standings: []fpl.Standing{
-				{Rank: 1, LeagueEntry: 1, Total: 150, EventTotal: 40},
-				{Rank: 2, LeagueEntry: 2, Total: 130, EventTotal: 35},
+				{Rank: 1, LastRank: 1, RankSort: 1, LeagueEntry: 1, Total: 150, EventTotal: 40},
+				{Rank: 2, LastRank: 2, RankSort: 2, LeagueEntry: 2, Total: 130, EventTotal: 35},
 			},
 		},
 		Live: map[int]fpl.LiveGW{
@@ -465,6 +467,11 @@ func TestStandings_PreSortedByLivePointsWithRanksAndArrows(t *testing.T) {
 	if first["officialRank"].(float64) != 2 || first["liveRank"].(float64) != 1 {
 		t.Errorf("rows[0] ranks = official %v live %v, want 2 / 1", first["officialRank"], first["liveRank"])
 	}
+	// The payload carries last_rank (the "from" end of the arrow) and the arrow
+	// is week-over-week: M2 was last_rank 2, is now live rank 1, so +1.
+	if first["lastRank"].(float64) != 2 {
+		t.Errorf("rows[0].lastRank = %v, want 2", first["lastRank"])
+	}
 	if first["arrow"].(float64) != 1 {
 		t.Errorf("rows[0].arrow = %v, want 1", first["arrow"])
 	}
@@ -476,6 +483,9 @@ func TestStandings_PreSortedByLivePointsWithRanksAndArrows(t *testing.T) {
 	// M1 drops to live rank 2 (frozen 110 + 0), arrow -1.
 	if second["entryId"].(float64) != 500 {
 		t.Errorf("rows[1].entryId = %v, want 500 (M1)", second["entryId"])
+	}
+	if second["lastRank"].(float64) != 1 {
+		t.Errorf("rows[1].lastRank = %v, want 1", second["lastRank"])
 	}
 	if second["arrow"].(float64) != -1 {
 		t.Errorf("rows[1].arrow = %v, want -1", second["arrow"])

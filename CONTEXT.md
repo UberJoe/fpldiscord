@@ -29,3 +29,15 @@ The cumulative season total the Draft API reports on a standings row. Includes t
 current gameweek's *official* event total, which lags live scoring (no live bonus,
 auto-subs only once the gameweek finishes). Not the same as the [[live-total]].
 _Avoid_: Draft total
+
+**Movement arrow**:
+The ▲ / ▼ / – indicator beside a manager on the web Standings table. Shows places
+gained or lost since **last week's final standings**: the Draft `last_rank` on
+the standings row minus the manager's current [[live-total]] rank (positive is a
+climb). It is fixed for the duration of a gameweek in progress — `last_rank` is
+settled, only the live rank moves — so it tracks real net movement, not the gap
+between [[live-total]] and [[official-total]] scoring. A manager with no previous
+position (gameweek 1, or a mid-season entrant: `last_rank == 0`) shows a flat
+arrow. Managers level on live points share a live rank, so both ends of the
+subtraction use the Draft joint-ranking scheme.
+_Avoid_: live movement, within-gameweek movement
