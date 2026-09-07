@@ -1,8 +1,9 @@
 // View 1 — Standings, also the live-scores view. Every league manager in live
-// order (server pre-sorts by livePoints desc); each row shows the season total,
-// the gameweek points so far, and a green/red arrow for live movement within
-// the gameweek. All sorting and rank maths are server-side — this renders array
-// order only. Tapping a row opens the manager drill-down route.
+// order (server pre-sorts by livePoints desc); each row shows the live total
+// (frozen total + live gameweek score), the gameweek points so far, and a
+// green/red arrow for live movement within the gameweek. All sorting and rank
+// maths are server-side — this renders array order only. Tapping a row opens the
+// manager drill-down route.
 
 import { fetchStandings, StandingsRow, StartingUpError } from "../api";
 import { usePoll } from "../usePoll";
@@ -14,7 +15,16 @@ function Arrow({ n }: { n: number }) {
   return <span className="arrow flat" title="no change">–</span>;
 }
 
-function Row({ row }: { row: StandingsRow }) {
+// The GW cell distinguishes a genuine mid-match "+0" from a dead week. Once the
+// gameweek has started, everyone without points reads "+0"; between gameweeks it
+// reads "–". "Started" = a match is live now, or any row has scored this GW (which
+// carries "+0" through the gaps between fixtures when matchLive drops back to false).
+function gwCell(liveGwPoints: number, gwStarted: boolean): string {
+  if (liveGwPoints !== 0) return `+${liveGwPoints}`;
+  return gwStarted ? "+0" : "–";
+}
+
+function Row({ row, gwStarted }: { row: StandingsRow; gwStarted: boolean }) {
   return (
     <li
       className="standings-row"
@@ -31,10 +41,10 @@ function Row({ row }: { row: StandingsRow }) {
         <span className="team">{row.entryName}</span>
       </span>
       <span className="gw">
-        +{row.liveGwPoints}
+        {gwCell(row.liveGwPoints, gwStarted)}
         <Arrow n={row.arrow} />
       </span>
-      <span className="total">{row.totalPoints}</span>
+      <span className="total">{row.livePoints}</span>
     </li>
   );
 }
@@ -53,6 +63,8 @@ export function Standings() {
   if (!envelope) return null;
 
   const { rows } = envelope.data;
+  const gwStarted =
+    envelope.meta.matchLive || rows.some((r) => r.liveGwPoints !== 0);
 
   if (envelope.meta.leagueMode !== "classic") {
     return <p className="status">Standings aren't available in head-to-head mode.</p>;
@@ -74,7 +86,7 @@ export function Standings() {
           <span className="total">Total</span>
         </li>
         {rows.map((r) => (
-          <Row key={r.entryId} row={r} />
+          <Row key={r.entryId} row={r} gwStarted={gwStarted} />
         ))}
       </ol>
     </>
