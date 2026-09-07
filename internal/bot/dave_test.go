@@ -3,7 +3,23 @@ package bot
 import (
 	"log/slog"
 	"testing"
+
+	"github.com/UberJoe/fpldiscord/internal/config"
+	"github.com/UberJoe/fpldiscord/internal/fpl"
 )
+
+// newTestBot builds a Bot with the real handler/autocomplete wiring but no
+// gateway connection — enough to assert on commandSpecs() and the dispatch
+// maps.
+func newTestBot() (*Bot, error) {
+	log := slog.New(slog.NewTextHandler(discardWriter{}, nil))
+	return New(config.Config{DiscordToken: "test-token"}, log, snapSource{})
+}
+
+// snapSource is a SnapshotSource that has not built a snapshot yet.
+type snapSource struct{}
+
+func (snapSource) Current() *fpl.Snapshot { return nil }
 
 // recordingResponder is the seam-4 fake: it records what a handler tried to send
 // instead of talking to Discord.
@@ -44,9 +60,41 @@ func TestCommandSpecs_RegistersCommands(t *testing.T) {
 	for _, s := range commandSpecs() {
 		got[s.Name] = true
 	}
-	for _, want := range []string{"dave", "standings", "scores"} {
+	for _, want := range []string{"dave", "standings", "scores", "owner", "teamlist"} {
 		if !got[want] {
 			t.Errorf("commandSpecs() missing %q; have %v", want, got)
+		}
+	}
+}
+
+// TestCommandSpecs_AutocompleteArgsAreRegistered guards the wiring the client
+// depends on: an autocompleting arg must carry Autocomplete=true and the bot
+// must have a resolver registered for that command.
+func TestCommandSpecs_AutocompleteArgsAreRegistered(t *testing.T) {
+	b, err := newTestBot()
+	if err != nil {
+		t.Fatalf("newTestBot: %v", err)
+	}
+	want := map[string]string{"owner": "player", "teamlist": "owner"}
+	for _, s := range commandSpecs() {
+		optName, autocompleted := want[s.Name]
+		if !autocompleted {
+			continue
+		}
+		if _, ok := b.autocomplete[s.Name]; !ok {
+			t.Errorf("command %q has no autocomplete resolver registered", s.Name)
+		}
+		var found bool
+		for _, o := range s.Options {
+			if o.Name == optName {
+				found = true
+				if !o.Autocomplete {
+					t.Errorf("%s.%s option is missing Autocomplete=true", s.Name, optName)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("command %q missing expected option %q", s.Name, optName)
 		}
 	}
 }

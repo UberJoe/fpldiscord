@@ -33,6 +33,13 @@ var extraFolds = strings.NewReplacer(
 	"Đ", "D", "đ", "d",
 )
 
+// StripAccents removes diacritics from s (é→e, ø→o, ł→l, …) while preserving
+// case. It is the shared name-normalisation primitive: the snapshot builds the
+// autocomplete candidate slices with it, and the bot folds a user's partial
+// argument through it at match time so a name typed in plain ASCII resolves
+// against its accented form.
+func StripAccents(s string) string { return stripAccents(s) }
+
 // stripAccents returns s with diacritics removed, matching the intent of the
 // Python bot's unidecode() call so that autocomplete matches "Hojlund" against
 // "Højlund". Case is preserved; callers lowercase at match time.

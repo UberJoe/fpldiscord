@@ -56,6 +56,13 @@ func (o cmdOptions) Int(name string) (int, bool) {
 	}
 }
 
+// String returns a named string option; a missing or non-string option returns
+// ok=false.
+func (o cmdOptions) String(name string) (string, bool) {
+	s, ok := o[name].(string)
+	return s, ok
+}
+
 // handlerFunc is one command handler, dispatched by name from the hand-rolled
 // map.
 type handlerFunc func(in *cmdInput) error
@@ -67,7 +74,10 @@ type Bot struct {
 	devGuildID string
 	snap       SnapshotSource
 	handlers   map[string]handlerFunc
-	synced     atomic.Bool // set once the command sync has succeeded
+	// autocomplete resolves the focused option of an autocomplete interaction,
+	// keyed by command name. Commands without an autocompleting arg are absent.
+	autocomplete map[string]acHandlerFunc
+	synced       atomic.Bool // set once the command sync has succeeded
 }
 
 // New builds a Bot from config. The gateway is not opened until Open is called.
@@ -90,6 +100,12 @@ func New(cfg config.Config, log *slog.Logger, snap SnapshotSource) (*Bot, error)
 			"dave":      handleDave,
 			"standings": handleStandings,
 			"scores":    handleScores,
+			"owner":     handleOwner,
+			"teamlist":  handleTeamlist,
+		},
+		autocomplete: map[string]acHandlerFunc{
+			"owner":    autocompletePlayer,
+			"teamlist": autocompleteOwner,
 		},
 	}
 
@@ -131,6 +147,32 @@ func commandSpecs() []*discordgo.ApplicationCommand {
 				},
 			},
 		},
+		{
+			Name:        "owner",
+			Description: "Show which manager owns a player",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:         discordgo.ApplicationCommandOptionString,
+					Name:         "player",
+					Description:  "Player name",
+					Required:     true,
+					Autocomplete: true,
+				},
+			},
+		},
+		{
+			Name:        "teamlist",
+			Description: "List a manager's squad grouped by position",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:         discordgo.ApplicationCommandOptionString,
+					Name:         "owner",
+					Description:  "Manager's first name",
+					Required:     true,
+					Autocomplete: true,
+				},
+			},
+		},
 	}
 }
 
@@ -158,11 +200,19 @@ func (b *Bot) onReady(s *discordgo.Session, r *discordgo.Ready) {
 	b.log.Info("commands synced", "count", len(commandSpecs()), "scope", scope)
 }
 
-// onInteraction dispatches an application-command interaction to its handler.
+// onInteraction routes an interaction: a slash-command invocation to its
+// handler, an autocomplete request to its resolver. Everything else is ignored.
 func (b *Bot) onInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	if i.Type != discordgo.InteractionApplicationCommand {
-		return
+	switch i.Type {
+	case discordgo.InteractionApplicationCommand:
+		b.onCommand(s, i)
+	case discordgo.InteractionApplicationCommandAutocomplete:
+		b.onAutocomplete(s, i)
 	}
+}
+
+// onCommand dispatches a slash-command invocation to its handler.
+func (b *Bot) onCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ApplicationCommandData()
 	h, ok := b.handlers[data.Name]
 	if !ok {
@@ -180,6 +230,48 @@ func (b *Bot) onInteraction(s *discordgo.Session, i *discordgo.InteractionCreate
 	if err := h(in); err != nil {
 		b.log.Error("command handler failed", "command", data.Name, "err", err)
 	}
+}
+
+// onAutocomplete resolves the focused option of an autocomplete request and
+// replies with the matching choices. A request that arrives before snapshot #1
+// gets an empty (but valid) choice list rather than an error in the client. A
+// command with no registered resolver is a wiring bug (an Autocomplete=true
+// option with nothing to serve it) — it is logged and left unanswered, the
+// same shape as onCommand's unknown-command path.
+func (b *Bot) onAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	data := i.ApplicationCommandData()
+	h, ok := b.autocomplete[data.Name]
+	if !ok {
+		b.log.Warn("no autocomplete resolver for command", "command", data.Name)
+		return
+	}
+
+	var choices []*discordgo.ApplicationCommandOptionChoice
+	if b.snap != nil {
+		if snap := b.snap.Current(); snap != nil {
+			focused, partial := focusedOption(data.Options)
+			choices = h(snap, focused, partial)
+		}
+	}
+
+	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionApplicationCommandAutocompleteResult,
+		Data: &discordgo.InteractionResponseData{Choices: choices},
+	}); err != nil {
+		b.log.Error("autocomplete respond failed", "command", data.Name, "err", err)
+	}
+}
+
+// focusedOption returns the name and partial value of the option the user is
+// currently editing in an autocomplete interaction.
+func focusedOption(opts []*discordgo.ApplicationCommandInteractionDataOption) (name, partial string) {
+	for _, o := range opts {
+		if o.Focused {
+			s, _ := o.Value.(string)
+			return o.Name, s
+		}
+	}
+	return "", ""
 }
 
 // interactionResponder is the discordgo-backed Responder.
