@@ -48,3 +48,11 @@ func dataEmbed(leagueName string, builtAt time.Time, title string, color int, fo
 	}
 	return e
 }
+
+// codeBlock wraps an aligned table body in a triple-backtick fence — the one
+// Discord primitive that renders fixed-width on every client. Every rich-data
+// reply that carries a tabwriter / space-padded table goes through here so the
+// fence lives in exactly one place.
+func codeBlock(body string) string {
+	return "```\n" + body + "\n```"
+}

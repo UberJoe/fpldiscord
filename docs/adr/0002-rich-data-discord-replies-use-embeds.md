@@ -83,3 +83,10 @@ convention is recorded here so the fast-follow tickets (`/teamlist`, `/waivers`,
   are untouched.
 - Discord `/standings` still passes the Draft rank straight through with no
   movement-arrow column; arrows remain web-only per ADR 0001.
+- Amendment (ticket 02): "moved unchanged" holds for the plain-text `tabwriter`
+  bodies in principle, but `/standings` re-rolls its table body by hand
+  (`standingsTable`) instead of reusing `tabwriter`. `tabwriter` measures column
+  width in bytes, so a capped multi-byte team name misaligns, and it cannot
+  right-align the numeric columns while left-aligning the name — both of which
+  the ticket requires. `/scores` and `/overview` keep `tabwriter` unless they
+  hit the same constraint.
