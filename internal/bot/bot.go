@@ -103,6 +103,7 @@ func New(cfg config.Config, log *slog.Logger, snap SnapshotSource) (*Bot, error)
 			"owner":     handleOwner,
 			"teamlist":  handleTeamlist,
 			"waivers":   handleWaivers,
+			"overview":  handleOverview,
 		},
 		autocomplete: map[string]acHandlerFunc{
 			"owner":    autocompletePlayer,
@@ -196,6 +197,23 @@ func commandSpecs() []*discordgo.ApplicationCommand {
 					Description:  "Manager's first name",
 					Required:     true,
 					Autocomplete: true,
+				},
+			},
+		},
+		{
+			Name:        "overview",
+			Description: "Show this gameweek's fixtures and goalscorers",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "mode",
+					Description: "Which fixtures to show (defaults to the whole gameweek)",
+					Required:    false,
+					Choices: []*discordgo.ApplicationCommandOptionChoice{
+						{Name: "Today's matches", Value: "today"},
+						{Name: "Gameweek's matches", Value: "gameweek"},
+						{Name: "Live matches", Value: "live"},
+					},
 				},
 			},
 		},
