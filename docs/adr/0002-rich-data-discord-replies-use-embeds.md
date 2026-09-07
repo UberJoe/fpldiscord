@@ -90,3 +90,13 @@ convention is recorded here so the fast-follow tickets (`/teamlist`, `/waivers`,
   right-align the numeric columns while left-aligning the name — both of which
   the ticket requires. `/scores` and `/overview` keep `tabwriter` unless they
   hit the same constraint.
+- Amendment (ticket 04): `/overview` carries no table body at all — it renders
+  one non-inline embed `field` per fixture (score line as the name, goalscorer
+  lines as the value), so no `tabwriter` and no code fence. `renderOverview`
+  returns one `[]*discordgo.MessageEmbed` per Discord message; an
+  `overviewChunker` packs fields at 25 per embed, 10 embeds per message, and a
+  per-message character budget kept a little under the 6000-char ceiling, keeping
+  the "spill to another message" behaviour a big or double gameweek needs. The field name is plain text (Discord renders no
+  markdown there); the field value reuses the scorer-line formatting verbatim.
+  The league name moves to the footer (not the author line) for `/overview`, and
+  only the first embed carries the title.

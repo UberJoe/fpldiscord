@@ -22,19 +22,52 @@ fixtures for this gameweek") stay short plain text.
 
 **Blocked by:** 01 — Embed output seam, shared scaffold, and ADR.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `/overview` replies with one field per fixture: score line as the name,
+- [x] `/overview` replies with one field per fixture: score line as the name,
       goalscorer lines as the value, "no goals" note when the fixture has none;
-      fixtures in the same order as today.
-- [ ] The embed colour is neutral before kickoff, provisional if any shown
+      fixtures in the same order as today. (`renderOverview` → one non-inline
+      `discordgo.MessageEmbedField` per fixture; `overviewFixtureHeader` /
+      `overviewFixtureBody`)
+- [x] The embed colour is neutral before kickoff, provisional if any shown
       fixture is live, and final if every shown fixture is finished.
-- [ ] The title keeps the mode wording, the footer shows the league name, and the
-      `Timestamp` equals the snapshot's build time.
-- [ ] More than 25 fixtures split across multiple embeds; more than 10 embeds'
+      (`overviewColor`)
+- [x] The title keeps the mode wording, the footer shows the league name, and the
+      `Timestamp` equals the snapshot's build time. (title
+      `"GW{n} {mode wording}"` on the first embed only; `dataEmbed("", BuiltAt,
+      title, colour, leagueName)` — league name in the footer, not the author
+      line, per the spec)
+- [x] More than 25 fixtures split across multiple embeds; more than 10 embeds'
       worth split across multiple messages; a fixture whose scorer list would
       exceed the per-field limit is truncated with an ellipsis.
-- [ ] The empty-window replies are still plain text.
-- [ ] The overview handler tests assert on the embed structure and cover the
+      (`overviewChunker.add` closes an embed at `maxEmbedFields`, a message at
+      `maxEmbedsPerMessage` or `overviewMessageCharBudget` — a small margin under
+      `maxMessageEmbedChars`; per-field guard is `capRunes(body,
+      maxEmbedFieldValue)`)
+- [x] The empty-window replies are still plain text. (`overviewEmptyReply` via
+      `Respond`, unchanged; nil-snapshot and bad-mode too)
+- [x] The overview handler tests assert on the embed structure and cover the
       25-field and multi-message chunking boundaries.
-- [ ] `go test ./...` is green.
+      (`TestRenderOverview_SplitsPastTwentyFiveFixturesIntoMultipleEmbeds`,
+      `TestRenderOverview_SplitsPastTenEmbedsIntoASecondMessage`,
+      `TestRenderOverview_TruncatesAFixtureValueOverTheFieldLimit`)
+- [x] `go test ./...` is green.
+
+## Comments
+
+**Return type: `[][]*discordgo.MessageEmbed`, not `[]*discordgo.MessageEmbed`.**
+The spec's Implementation Decisions line hints `renderOverview` returns
+`[]*discordgo.MessageEmbed` "(the per-message chunks)". A message can carry up to
+ten embeds and the ticket wants both a >25-fixture split (into embeds) *and* a
+>10-embed split (into messages), so the helper returns one
+`[]*discordgo.MessageEmbed` per Discord message and the handler sends each with a
+single `RespondEmbeds` call. Read the spec's phrase as "one chunk per message".
+
+**Field name is plain text.** `overviewFixtureHeader` dropped the `**bold**` /
+`_italic_` markdown it carried in the plain-text version — Discord renders no
+markdown in an embed field name, so the tag is now `(live)` / `(FT)` rather than
+`_(live)_`. `overviewScorerLine` (the field *value*) is unchanged; markdown does
+render there, so the `_no goals_` note keeps its italics.
+
+**`maxDiscordMessage` no longer used by `/overview`.** The old raw 2000-char
+pagination is gone; the constant still backs `/waivers` and `/bet`.

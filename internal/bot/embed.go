@@ -23,11 +23,29 @@ const (
 	colorFinal       = 0x3BA55D // green
 )
 
+// Discord's embed limits, enforced in code so a large league or a double
+// gameweek never produces a reply Discord rejects. Values from the Discord
+// developer docs (see .scratch/discord-embeds/research/01-embed-presentation.md).
+//
+//   - maxEmbedFieldValue   characters in one field value.
+//   - maxEmbedFields        fields per embed.
+//   - maxEmbedsPerMessage   embeds carried by one message.
+//   - maxMessageEmbedChars  combined character total across a message's embeds
+//     (Discord's hard ceiling; the /overview chunker keeps a margin below it).
+const (
+	maxEmbedFieldValue   = 1024
+	maxEmbedFields       = 25
+	maxEmbedsPerMessage  = 10
+	maxMessageEmbedChars = 6000
+)
+
 // dataEmbed builds the shared scaffold every /standings, /scores and /overview
-// reply starts from: the league name on the author line (when there is one), the
-// given title and colour bar, an optional footer line for gameweek context, and
-// the snapshot build time as the embed Timestamp so each client renders its own
-// localised "last updated". Callers fill in Description or Fields.
+// reply starts from: the league name on the author line (when leagueName is
+// non-empty), the given title and colour bar, the caller-supplied footer line
+// (gameweek context for /standings and /scores; the league name for /overview,
+// whose fields carry the fixtures instead), and the snapshot build time as the
+// embed Timestamp so each client renders its own localised "last updated".
+// Callers fill in Description or Fields.
 //
 // It takes the two snapshot-derived scalars directly rather than the whole
 // *fpl.Snapshot, matching renderStandings / renderScores in this package and
