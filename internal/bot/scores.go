@@ -5,6 +5,9 @@ import (
 	"sort"
 	"strings"
 	"text/tabwriter"
+	"time"
+
+	"github.com/bwmarrin/discordgo"
 )
 
 // scoreRow is one manager's line in the /scores table.
@@ -16,9 +19,14 @@ type scoreRow struct {
 
 // handleScores renders every league member's live / provisional gameweek points
 // with auto-subs applied (fpl.ManagerScore trusts stats.total_points and
-// stats.bonus as-is). The optional gw option defaults to the current gameweek;
-// the MVP snapshot only carries the current GW, so any other value gets a short
-// explanation rather than stale or empty numbers.
+// stats.bonus as-is) as a single framed embed: the league name on the author
+// line, the team / live-gameweek-points table in a fenced code block, and a colour
+// bar plus footer that say whether the gameweek is still provisional or final.
+//
+// The optional gw option defaults to the current gameweek; the MVP snapshot only
+// carries the current GW, so any other value gets a short plain-text explanation
+// rather than stale or empty numbers. The still-starting-up and empty-league
+// replies also stay plain text.
 func handleScores(in *cmdInput) error {
 	if in.snap == nil {
 		return in.resp.Respond("Scores aren't available yet — the bot is still starting up.")
@@ -55,25 +63,39 @@ func handleScores(in *cmdInput) error {
 		return rows[i].points > rows[j].points
 	})
 
-	return in.resp.Respond(renderScores(snap.LeagueName, gw, snap.GWFinished, rows))
+	e := renderScores(snap.LeagueName, snap.BuiltAt, gw, snap.GWFinished, rows)
+	return in.resp.RespondEmbeds([]*discordgo.MessageEmbed{e})
 }
 
-// renderScores lays the scores out in a monospace code block: team then this
-// gameweek's points (auto-subs applied), highest first. The header carries a
-// provisional / final tag so a reader knows whether the numbers can still move.
-func renderScores(leagueName string, gw int, finished bool, rows []scoreRow) string {
-	phase := "provisional"
+// renderScores builds the /scores embed on the shared dataEmbed scaffold. The
+// colour bar and footer encode phase off the finished flag: amber /
+// "provisional — scores can still move" while the gameweek is unfinished, green /
+// "final" once it is. The table body goes in the description as a fenced code
+// block.
+func renderScores(leagueName string, builtAt time.Time, gw int, finished bool, rows []scoreRow) *discordgo.MessageEmbed {
+	color := colorProvisional
+	footer := "provisional — scores can still move"
 	if finished {
-		phase = "final"
+		color = colorFinal
+		footer = "final"
 	}
 
+	e := dataEmbed(leagueName, builtAt, fmt.Sprintf("GW%d scores", gw), color, footer)
+	e.Description = codeBlock(scoresTable(rows))
+	return e
+}
+
+// scoresTable lays the scores out as a monospace code-block body: team then the
+// manager's live gameweek points (auto-subs applied), highest first, unscored
+// managers shown as a dash. It returns the bare body with no code fence —
+// renderScores wraps it via codeBlock so the fence lives in exactly one place.
+//
+// tabwriter here (not the hand-rolled layout /standings uses) because the two
+// columns are simple: no capped multi-byte name and no mixed per-column
+// alignment, the cases the ADR 0002 amendment carves out. tabwriter needs a
+// trailing newline per row, so the whole body is right-trimmed before return.
+func scoresTable(rows []scoreRow) string {
 	var b strings.Builder
-	if leagueName != "" {
-		fmt.Fprintf(&b, "**%s — GW%d scores (%s)**\n", leagueName, gw, phase)
-	} else {
-		fmt.Fprintf(&b, "**GW%d scores (%s)**\n", gw, phase)
-	}
-	b.WriteString("```\n")
 	tw := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "Team\tGW")
 	for _, r := range rows {
@@ -84,6 +106,5 @@ func renderScores(leagueName string, gw int, finished bool, rows []scoreRow) str
 		}
 	}
 	tw.Flush()
-	b.WriteString("```")
-	return b.String()
+	return strings.TrimRight(b.String(), "\n")
 }

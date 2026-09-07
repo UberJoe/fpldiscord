@@ -3,8 +3,11 @@ package bot
 import (
 	"fmt"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/UberJoe/fpldiscord/internal/fpl"
+	"github.com/bwmarrin/discordgo"
 )
 
 // overviewMode is the resolved /overview window.
@@ -49,8 +52,8 @@ func handleOverview(in *cmdInput) error {
 	if len(fixtures) == 0 {
 		return in.resp.Respond(overviewEmptyReply(mode, snap.CurrentGW))
 	}
-	for _, msg := range renderOverview(snap.LeagueName, snap.CurrentGW, mode, fixtures) {
-		if err := in.resp.Respond(msg); err != nil {
+	for _, embeds := range renderOverview(snap.LeagueName, snap.BuiltAt, snap.CurrentGW, mode, fixtures) {
+		if err := in.resp.RespondEmbeds(embeds); err != nil {
 			return err
 		}
 	}
@@ -99,62 +102,151 @@ var overviewTitle = map[overviewMode]string{
 	overviewLive:     "live fixtures",
 }
 
-// renderOverview lays each fixture out as a bold score line followed by its
-// goalscorer events, one per line, and packs the fixtures into as few messages
-// as possible under the Discord length limit — a full (or double) gameweek with
-// a lot of goals can exceed 2000 characters. Only the first message carries the
-// title. Fixtures come pre-sorted by kickoff.
-func renderOverview(leagueName string, gw int, mode overviewMode, fixtures []fpl.FixtureOverview) []string {
-	title := fmt.Sprintf("**GW%d %s**", gw, overviewTitle[mode])
-	if leagueName != "" {
-		title = fmt.Sprintf("**%s — GW%d %s**", leagueName, gw, overviewTitle[mode])
+// renderOverview lays each fixture out as one non-inline embed field — the score
+// line as the field name, the goalscorer events (or a "no goals" note) as the
+// field value — and chunks those fields across Discord messages with an
+// overviewChunker. This replaces the old raw 2000-character text pagination with
+// limit-aware chunking while keeping the "spill to another message" behaviour a
+// big or double gameweek needs.
+//
+// The return is one []*discordgo.MessageEmbed per Discord message; the caller
+// sends each with a single RespondEmbeds call. Fixtures come pre-sorted by
+// kickoff.
+func renderOverview(leagueName string, builtAt time.Time, gw int, mode overviewMode, fixtures []fpl.FixtureOverview) [][]*discordgo.MessageEmbed {
+	c := overviewChunker{
+		leagueName: leagueName,
+		builtAt:    builtAt,
+		title:      fmt.Sprintf("GW%d %s", gw, overviewTitle[mode]),
+		color:      overviewColor(fixtures),
 	}
-
-	blocks := make([]string, 0, len(fixtures))
 	for _, f := range fixtures {
-		var b strings.Builder
-		b.WriteString(overviewFixtureHeader(f))
-		if len(f.Scorers) == 0 {
-			b.WriteString("\n_no goals_")
-		}
-		for _, sc := range f.Scorers {
-			b.WriteByte('\n')
-			b.WriteString(overviewScorerLine(sc))
-		}
-		blocks = append(blocks, b.String())
+		c.add(overviewFixtureHeader(f), capRunes(overviewFixtureBody(f), maxEmbedFieldValue))
 	}
-
-	var msgs []string
-	cur := title
-	for _, blk := range blocks {
-		if len(cur)+len("\n\n")+len(blk) > maxDiscordMessage && cur != "" {
-			msgs = append(msgs, cur)
-			cur = ""
-		}
-		if cur == "" {
-			cur = blk
-		} else {
-			cur += "\n\n" + blk
-		}
-	}
-	if cur != "" {
-		msgs = append(msgs, cur)
-	}
-	return msgs
+	c.flushMessage()
+	return c.messages
 }
 
-// overviewFixtureHeader is the bold match line: "Home H - A Away" once the match
-// has started (with a live / FT tag), or "Home vs Away" beforehand.
+// overviewMessageCharBudget is the per-message character total the chunker stops
+// adding fields at. It sits a little below Discord's hard maxMessageEmbedChars
+// ceiling: the running count tracks field names, field values, the title and the
+// footers — almost the whole of what Discord sums — and the margin absorbs the
+// rest (newline and grapheme-vs-rune counting differences) so a real message can
+// never land over.
+const overviewMessageCharBudget = maxMessageEmbedChars - 200
+
+// overviewChunker packs one embed field per fixture into Discord messages,
+// respecting three limits at once: at most maxEmbedFields fields per embed, at
+// most maxEmbedsPerMessage embeds per message, and a per-message character
+// budget kept clear of the hard ceiling. Only the first embed of the whole reply
+// is titled; every embed carries the state colour bar and the league-name
+// footer. Field values are expected pre-truncated to the per-field limit.
+type overviewChunker struct {
+	leagueName string
+	builtAt    time.Time
+	title      string // stamped on the first embed, then cleared
+	color      int
+
+	messages [][]*discordgo.MessageEmbed
+	msg      []*discordgo.MessageEmbed // embeds accumulated for the current message
+	cur      *discordgo.MessageEmbed   // embed accumulating fields
+	msgChars int                       // approx character total across msg + cur
+}
+
+// add appends one fixture field, opening a new embed or message first whenever
+// this field would breach a limit.
+func (c *overviewChunker) add(name, value string) {
+	fieldChars := utf8.RuneCountInString(name) + utf8.RuneCountInString(value)
+
+	if c.cur != nil && c.msgChars+fieldChars > overviewMessageCharBudget {
+		c.flushMessage()
+	}
+	if c.cur == nil {
+		c.cur = dataEmbed("", c.builtAt, c.title, c.color, c.leagueName)
+		c.msgChars += utf8.RuneCountInString(c.title) + utf8.RuneCountInString(c.leagueName)
+		c.title = "" // the rest of the reply's embeds are untitled
+	}
+
+	c.cur.Fields = append(c.cur.Fields, &discordgo.MessageEmbedField{Name: name, Value: value})
+	c.msgChars += fieldChars
+
+	if len(c.cur.Fields) >= maxEmbedFields {
+		c.flushEmbed()
+		if len(c.msg) >= maxEmbedsPerMessage {
+			c.flushMessage()
+		}
+	}
+}
+
+// flushEmbed folds the in-progress embed into the current message.
+func (c *overviewChunker) flushEmbed() {
+	if c.cur != nil {
+		c.msg = append(c.msg, c.cur)
+		c.cur = nil
+	}
+}
+
+// flushMessage closes the current message, folding in any in-progress embed
+// first, and resets the character budget for the next one.
+func (c *overviewChunker) flushMessage() {
+	c.flushEmbed()
+	if len(c.msg) > 0 {
+		c.messages = append(c.messages, c.msg)
+		c.msg, c.msgChars = nil, 0
+	}
+}
+
+// overviewColor encodes the state of the shown fixtures on the embed colour bar:
+// provisional if any fixture is live, final if every fixture has finished,
+// neutral otherwise (nothing has kicked off yet, or a mix with none in play).
+func overviewColor(fixtures []fpl.FixtureOverview) int {
+	anyLive, allFinished := false, len(fixtures) > 0
+	for _, f := range fixtures {
+		finished := f.Finished || f.FinishedProvisional
+		if f.Started && !finished {
+			anyLive = true
+		}
+		if !finished {
+			allFinished = false
+		}
+	}
+	switch {
+	case anyLive:
+		return colorProvisional
+	case allFinished:
+		return colorFinal
+	default:
+		return colorNeutral
+	}
+}
+
+// overviewFixtureBody is the field value for one fixture: its goalscorer event
+// lines joined by newlines, or a "no goals" note when the fixture has none. The
+// scorer-line formatting (and its emoji) is reused verbatim from the plain-text
+// version.
+func overviewFixtureBody(f fpl.FixtureOverview) string {
+	if len(f.Scorers) == 0 {
+		return "_no goals_"
+	}
+	lines := make([]string, len(f.Scorers))
+	for i, sc := range f.Scorers {
+		lines[i] = overviewScorerLine(sc)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// overviewFixtureHeader is the match line used as a field name: "Home H - A Away"
+// once the match has started (with a live / FT tag), or "Home vs Away"
+// beforehand. Plain text — Discord renders no markdown in a field name.
 func overviewFixtureHeader(f fpl.FixtureOverview) string {
 	home, away := overviewTeam(f.TeamHome), overviewTeam(f.TeamAway)
 	if !f.Started {
-		return fmt.Sprintf("**%s vs %s**", home, away)
+		return fmt.Sprintf("%s vs %s", home, away)
 	}
-	tag := " _(live)_"
+	tag := " (live)"
 	if f.Finished || f.FinishedProvisional {
-		tag = " _(FT)_"
+		tag = " (FT)"
 	}
-	return fmt.Sprintf("**%s %d - %d %s**%s", home, f.HomeScore, f.AwayScore, away, tag)
+	return fmt.Sprintf("%s %d - %d %s%s", home, f.HomeScore, f.AwayScore, away, tag)
 }
 
 // overviewScorerLine is one goalscorer event: a marker (repeated for a brace),

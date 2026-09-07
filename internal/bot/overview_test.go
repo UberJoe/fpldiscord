@@ -4,8 +4,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/UberJoe/fpldiscord/internal/fpl"
+	"github.com/bwmarrin/discordgo"
 )
 
 // overviewSnap is a GW4 snapshot with a finished fixture, an in-play fixture,
@@ -61,66 +63,136 @@ func overviewSnap() *fpl.Snapshot {
 	}
 }
 
-func TestHandleOverview_DefaultModeShowsWholeGameweek(t *testing.T) {
+// overviewMessages runs handleOverview against a recordingResponder and returns
+// the embed payloads it emitted — one []*discordgo.MessageEmbed per Discord
+// message — failing the test if the handler sent any plain-text message.
+func overviewMessages(t *testing.T, in *cmdInput) [][]*discordgo.MessageEmbed {
+	t.Helper()
 	r := &recordingResponder{}
-	if err := handleOverview(&cmdInput{snap: overviewSnap(), resp: r}); err != nil {
+	in.resp = r
+	if err := handleOverview(in); err != nil {
 		t.Fatalf("handleOverview: %v", err)
 	}
-	if len(r.messages) != 1 {
-		t.Fatalf("messages = %v, want one", r.messages)
+	if len(r.messages) != 0 {
+		t.Fatalf("plain messages = %v, want none — /overview replies with embeds", r.messages)
 	}
-	msg := r.messages[0]
+	return r.embeds
+}
 
-	for _, want := range []string{"Coq au Ian", "GW4", "gameweek", "Saka", "Sam"} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("overview output missing %q:\n%s", want, msg)
+// allFields flattens every field of every embed across every message into a
+// single "name\nvalue" string for coarse substring assertions.
+func allFields(msgs [][]*discordgo.MessageEmbed) string {
+	var b strings.Builder
+	for _, msg := range msgs {
+		for _, e := range msg {
+			for _, f := range e.Fields {
+				b.WriteString(f.Name)
+				b.WriteByte('\n')
+				b.WriteString(f.Value)
+				b.WriteByte('\n')
+			}
+		}
+	}
+	return b.String()
+}
+
+func countFields(msgs [][]*discordgo.MessageEmbed) int {
+	n := 0
+	for _, msg := range msgs {
+		for _, e := range msg {
+			n += len(e.Fields)
+		}
+	}
+	return n
+}
+
+func TestHandleOverview_DefaultModeShowsWholeGameweekAsEmbedFields(t *testing.T) {
+	msgs := overviewMessages(t, &cmdInput{snap: overviewSnap()})
+
+	if len(msgs) != 1 || len(msgs[0]) != 1 {
+		t.Fatalf("embeds = %v, want one message carrying one embed", msgs)
+	}
+	e := msgs[0][0]
+
+	if e.Title != "GW4 gameweek fixtures" {
+		t.Errorf("title = %q, want the gameweek mode wording", e.Title)
+	}
+	if e.Footer == nil || e.Footer.Text != "Coq au Ian" {
+		t.Errorf("footer = %+v, want the league name", e.Footer)
+	}
+	if want := overviewSnap().BuiltAt.Format(time.RFC3339); e.Timestamp != want {
+		t.Errorf("timestamp = %q, want the snapshot build time %q", e.Timestamp, want)
+	}
+	// A live fixture is in the window, so the colour bar is provisional.
+	if e.Color != colorProvisional {
+		t.Errorf("color = %#x, want provisional %#x (a fixture is live)", e.Color, colorProvisional)
+	}
+
+	// One field per fixture, in the snapshot's order.
+	if len(e.Fields) != 3 {
+		t.Fatalf("fields = %d, want one per fixture", len(e.Fields))
+	}
+	wantNames := []string{"Tottenham 1 - 0 West Ham (FT)", "Arsenal 2 - 1 Chelsea (live)", "Chelsea vs Tottenham"}
+	for i, want := range wantNames {
+		if e.Fields[i].Name != want {
+			t.Errorf("field %d name = %q, want %q", i, e.Fields[i].Name, want)
+		}
+		if e.Fields[i].Inline {
+			t.Errorf("field %d is inline, want a non-inline block per fixture", i)
+		}
+	}
+
+	body := allFields(msgs)
+	for _, want := range []string{"Saka", "Sam"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("field bodies missing %q:\n%s", want, body)
 		}
 	}
 	// Rice only has a defensive_contribution — it must not be rendered.
-	if strings.Contains(msg, "Rice") {
-		t.Errorf("defensive_contribution player leaked into the goalscorer display:\n%s", msg)
+	if strings.Contains(body, "Rice") {
+		t.Errorf("defensive_contribution player leaked into the goalscorer display:\n%s", body)
 	}
-	// All three fixtures present in the default (whole-gameweek) window.
-	for _, want := range []string{"Tottenham 1 - 0 West Ham", "Arsenal 2 - 1 Chelsea", "Chelsea vs Tottenham"} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("whole-gameweek window missing fixture line %q:\n%s", want, msg)
-		}
+	// The upcoming fixture has no goals and carries the note.
+	if e.Fields[2].Value != "_no goals_" {
+		t.Errorf("upcoming fixture value = %q, want the no-goals note", e.Fields[2].Value)
 	}
 }
 
 func TestHandleOverview_LiveModeDropsFinishedAndUpcoming(t *testing.T) {
-	r := &recordingResponder{}
-	in := &cmdInput{snap: overviewSnap(), opts: cmdOptions{"mode": "live"}, resp: r}
-	if err := handleOverview(in); err != nil {
-		t.Fatalf("handleOverview: %v", err)
-	}
-	msg := r.messages[0]
+	in := &cmdInput{snap: overviewSnap(), opts: cmdOptions{"mode": "live"}}
+	msgs := overviewMessages(t, in)
 
-	if !strings.Contains(msg, "Arsenal 2 - 1 Chelsea") {
-		t.Errorf("live window missing the in-play fixture:\n%s", msg)
+	if len(msgs) != 1 || len(msgs[0]) != 1 {
+		t.Fatalf("embeds = %v, want one message carrying one embed", msgs)
 	}
-	if strings.Contains(msg, "West Ham") {
-		t.Errorf("live window still shows the finished fixture:\n%s", msg)
+	e := msgs[0][0]
+
+	if len(e.Fields) != 1 || e.Fields[0].Name != "Arsenal 2 - 1 Chelsea (live)" {
+		t.Errorf("live window fields = %+v, want just the in-play fixture", e.Fields)
 	}
-	if strings.Contains(msg, "Chelsea vs Tottenham") {
-		t.Errorf("live window still shows the upcoming fixture:\n%s", msg)
+	if e.Color != colorProvisional {
+		t.Errorf("color = %#x, want provisional %#x", e.Color, colorProvisional)
+	}
+	body := allFields(msgs)
+	if strings.Contains(body, "West Ham") || strings.Contains(body, "Chelsea vs Tottenham") {
+		t.Errorf("live window still shows a finished or upcoming fixture:\n%s", body)
 	}
 }
 
-func TestHandleOverview_TodayModeEmptyIsExplained(t *testing.T) {
+func TestHandleOverview_TodayModeEmptyIsExplainedAsPlainText(t *testing.T) {
 	// No fixture in overviewSnap carries a kickoff on the build date, so Today
-	// mode comes back empty — the handler must say so rather than erroring or
-	// falling back to the full list.
+	// mode comes back empty — the handler must say so in plain text rather than
+	// erroring or falling back to the full list.
 	r := &recordingResponder{}
 	in := &cmdInput{snap: overviewSnap(), opts: cmdOptions{"mode": "today"}, resp: r}
 	if err := handleOverview(in); err != nil {
 		t.Fatalf("handleOverview: %v", err)
 	}
+	if len(r.embeds) != 0 {
+		t.Errorf("today-mode empty path emitted an embed %v, want plain text only", r.embeds)
+	}
 	if len(r.messages) != 1 || !strings.Contains(strings.ToLower(r.messages[0]), "today") {
 		t.Errorf("today-mode empty reply = %v", r.messages)
-	}
-	if strings.Contains(r.messages[0], "Arsenal") {
-		t.Errorf("today mode leaked a non-today fixture:\n%s", r.messages[0])
 	}
 }
 
@@ -161,64 +233,173 @@ func TestRenderOverview_TodayModeRendersFixturesAndScorers(t *testing.T) {
 		},
 	}}
 
-	msgs := renderOverview("Coq au Ian", 4, overviewToday, fixtures)
-	if len(msgs) != 1 {
-		t.Fatalf("len(msgs) = %d, want 1 for a single fixture", len(msgs))
+	msgs := renderOverview("Coq au Ian", time.Now(), 4, overviewToday, fixtures)
+	if len(msgs) != 1 || len(msgs[0]) != 1 {
+		t.Fatalf("msgs = %v, want one message carrying one embed", msgs)
 	}
-	msg := msgs[0]
+	e := msgs[0][0]
 
-	for _, want := range []string{"today's fixtures", "Arsenal 2 - 1 Chelsea", "⚽⚽ Saka — Sam", "Gabriel (OG)", "🟥 Palmer"} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("today-mode render missing %q:\n%s", want, msg)
+	if e.Title != "GW4 today's fixtures" {
+		t.Errorf("title = %q, want the today mode wording", e.Title)
+	}
+	if len(e.Fields) != 1 {
+		t.Fatalf("fields = %d, want one for the single fixture", len(e.Fields))
+	}
+	if e.Fields[0].Name != "Arsenal 2 - 1 Chelsea (live)" {
+		t.Errorf("field name = %q", e.Fields[0].Name)
+	}
+	for _, want := range []string{"⚽⚽ Saka — Sam", "Gabriel (OG)", "🟥 Palmer"} {
+		if !strings.Contains(e.Fields[0].Value, want) {
+			t.Errorf("field value missing %q:\n%s", want, e.Fields[0].Value)
 		}
 	}
 }
 
-func TestRenderOverview_SplitsLongOutputAcrossMessages(t *testing.T) {
-	scorers := make([]fpl.OverviewStat, 12)
-	for i := range scorers {
-		scorers[i] = fpl.OverviewStat{StatName: fpl.OverviewGoal, PlayerName: "A Long Player Name Here", OwnerName: "Some Owner", Value: 1}
+// bigOverview builds n minimal no-goals fixtures for chunking-boundary tests.
+func bigOverview(n int) []fpl.FixtureOverview {
+	out := make([]fpl.FixtureOverview, n)
+	for i := range out {
+		out[i] = fpl.FixtureOverview{TeamHome: "Home", TeamAway: "Away"}
 	}
-	fixtures := make([]fpl.FixtureOverview, 20)
-	for i := range fixtures {
-		fixtures[i] = fpl.FixtureOverview{
-			TeamHome: "Manchester United", TeamAway: "Wolverhampton Wanderers",
-			HomeScore: 3, AwayScore: 3, Started: true, Scorers: scorers,
+	return out
+}
+
+func TestRenderOverview_OneFieldPerFixture(t *testing.T) {
+	msgs := renderOverview("A League", time.Now(), 4, overviewGameweek, bigOverview(7))
+	if got := countFields(msgs); got != 7 {
+		t.Errorf("total fields = %d, want one per fixture", got)
+	}
+}
+
+func TestRenderOverview_SplitsPastTwentyFiveFixturesIntoMultipleEmbeds(t *testing.T) {
+	msgs := renderOverview("A League", time.Now(), 4, overviewGameweek, bigOverview(26))
+
+	if len(msgs) != 1 {
+		t.Fatalf("messages = %d, want 26 fixtures to still fit one message", len(msgs))
+	}
+	if len(msgs[0]) != 2 {
+		t.Fatalf("embeds in the message = %d, want a split into two past 25 fields", len(msgs[0]))
+	}
+	if len(msgs[0][0].Fields) != maxEmbedFields || len(msgs[0][1].Fields) != 1 {
+		t.Errorf("field split = %d + %d, want %d + 1", len(msgs[0][0].Fields), len(msgs[0][1].Fields), maxEmbedFields)
+	}
+	// Only the first embed carries the title.
+	if msgs[0][0].Title == "" || msgs[0][1].Title != "" {
+		t.Errorf("titles = %q / %q, want the title on the first embed only", msgs[0][0].Title, msgs[0][1].Title)
+	}
+	if countFields(msgs) != 26 {
+		t.Errorf("total fields = %d, want 26", countFields(msgs))
+	}
+}
+
+func TestRenderOverview_SplitsPastTenEmbedsIntoASecondMessage(t *testing.T) {
+	// 251 fixtures = ten full 25-field embeds (one message's worth) plus one.
+	msgs := renderOverview("A League", time.Now(), 4, overviewGameweek, bigOverview(251))
+
+	if len(msgs) != 2 {
+		t.Fatalf("messages = %d, want a spill into a second message past ten embeds", len(msgs))
+	}
+	if len(msgs[0]) != maxEmbedsPerMessage {
+		t.Errorf("first message embeds = %d, want %d", len(msgs[0]), maxEmbedsPerMessage)
+	}
+	if len(msgs[1]) != 1 || len(msgs[1][0].Fields) != 1 {
+		t.Errorf("second message = %+v, want one embed with the last fixture", msgs[1])
+	}
+	if countFields(msgs) != 251 {
+		t.Errorf("total fields = %d, want 251", countFields(msgs))
+	}
+}
+
+func TestRenderOverview_SplitsAMessageBeforeTheCharacterCeiling(t *testing.T) {
+	// Twelve fixtures, each with a ~700-char scorer list: well under the 25-field
+	// and 10-embed walls, so any message split here is the character budget
+	// firing.
+	scorers := make([]fpl.OverviewStat, 10)
+	for i := range scorers {
+		scorers[i] = fpl.OverviewStat{
+			StatName:   fpl.OverviewGoal,
+			PlayerName: strings.Repeat("x", 44),
+			OwnerName:  strings.Repeat("y", 18),
+			Value:      1,
 		}
 	}
+	fixtures := make([]fpl.FixtureOverview, 12)
+	for i := range fixtures {
+		fixtures[i] = fpl.FixtureOverview{TeamHome: "Home", TeamAway: "Away", Started: true, Scorers: scorers}
+	}
 
-	msgs := renderOverview("A League", 4, overviewGameweek, fixtures)
+	msgs := renderOverview("A League", time.Now(), 4, overviewGameweek, fixtures)
+
 	if len(msgs) < 2 {
-		t.Fatalf("len(msgs) = %d, want a split for a 20-fixture high-scoring gameweek", len(msgs))
+		t.Fatalf("messages = %d, want a character-budget split", len(msgs))
 	}
 	for i, m := range msgs {
-		if len(m) > maxDiscordMessage {
-			t.Errorf("message %d is %d chars, over the %d limit", i, len(m), maxDiscordMessage)
+		if len(m) > maxEmbedsPerMessage {
+			t.Errorf("message %d has %d embeds, over the limit", i, len(m))
+		}
+		chars := 0
+		for _, e := range m {
+			chars += utf8.RuneCountInString(e.Title)
+			if e.Footer != nil {
+				chars += utf8.RuneCountInString(e.Footer.Text)
+			}
+			for _, f := range e.Fields {
+				chars += utf8.RuneCountInString(f.Name) + utf8.RuneCountInString(f.Value)
+			}
+		}
+		if chars > maxMessageEmbedChars {
+			t.Errorf("message %d totals %d chars, over Discord's %d ceiling", i, chars, maxMessageEmbedChars)
 		}
 	}
-	if !strings.HasPrefix(msgs[0], "**A League — GW4") {
-		t.Errorf("first message missing the title: %q", msgs[0][:40])
-	}
-	if strings.Contains(msgs[1], "GW4 gameweek fixtures**") {
-		t.Errorf("continuation message repeated the title:\n%s", msgs[1])
+	if countFields(msgs) != 12 {
+		t.Errorf("total fields = %d, want 12 (no fixture dropped in the split)", countFields(msgs))
 	}
 }
 
-func TestHandleOverview_RejectsUnknownMode(t *testing.T) {
+func TestRenderOverview_TruncatesAFixtureValueOverTheFieldLimit(t *testing.T) {
+	scorers := make([]fpl.OverviewStat, 40)
+	for i := range scorers {
+		scorers[i] = fpl.OverviewStat{
+			StatName:   fpl.OverviewGoal,
+			PlayerName: "A Player With A Fairly Long Web Name Here",
+			OwnerName:  "A Manager With A Long Team Name",
+			Value:      1,
+		}
+	}
+	fixtures := []fpl.FixtureOverview{{TeamHome: "Home", TeamAway: "Away", Started: true, Scorers: scorers}}
+
+	msgs := renderOverview("A League", time.Now(), 4, overviewGameweek, fixtures)
+	v := msgs[0][0].Fields[0].Value
+
+	if utf8.RuneCountInString(v) > maxEmbedFieldValue {
+		t.Errorf("field value is %d runes, over the %d limit", utf8.RuneCountInString(v), maxEmbedFieldValue)
+	}
+	if !strings.HasSuffix(v, "…") {
+		t.Errorf("over-long field value was not truncated with an ellipsis: ...%q", v[len(v)-10:])
+	}
+}
+
+func TestHandleOverview_RejectsUnknownModeAsPlainText(t *testing.T) {
 	r := &recordingResponder{}
 	in := &cmdInput{snap: overviewSnap(), opts: cmdOptions{"mode": "yesterday"}, resp: r}
 	if err := handleOverview(in); err != nil {
 		t.Fatalf("handleOverview: %v", err)
+	}
+	if len(r.embeds) != 0 {
+		t.Errorf("unknown-mode path emitted an embed %v, want plain text only", r.embeds)
 	}
 	if len(r.messages) != 1 || !strings.Contains(r.messages[0], "mode") {
 		t.Errorf("unknown-mode reply = %v", r.messages)
 	}
 }
 
-func TestHandleOverview_NoSnapshotReportsStartingUp(t *testing.T) {
+func TestHandleOverview_NoSnapshotReportsStartingUpAsPlainText(t *testing.T) {
 	r := &recordingResponder{}
 	if err := handleOverview(&cmdInput{snap: nil, resp: r}); err != nil {
 		t.Fatalf("handleOverview: %v", err)
+	}
+	if len(r.embeds) != 0 {
+		t.Errorf("nil-snapshot path emitted an embed %v, want plain text only", r.embeds)
 	}
 	if len(r.messages) != 1 || !strings.Contains(strings.ToLower(r.messages[0]), "starting up") {
 		t.Errorf("nil-snapshot reply = %v", r.messages)
