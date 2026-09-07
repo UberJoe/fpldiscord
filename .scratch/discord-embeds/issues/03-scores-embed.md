@@ -16,18 +16,33 @@ short plain text.
 
 **Blocked by:** 01 — Embed output seam, shared scaffold, and ADR.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `/scores` replies with one embed whose description is a fenced code block
+- [x] `/scores` replies with one embed whose description is a fenced code block
       containing the team / live-gameweek-points table, highest first, unscored
-      managers as a dash — same rows and order as today.
-- [ ] The embed colour is the provisional value while the gameweek is unfinished
-      and the final value once it is finished.
-- [ ] The provisional / final wording is in the footer, not the title; the league
-      name is on the author line.
-- [ ] The embed's `Timestamp` equals the snapshot's build time.
-- [ ] The startup-not-ready, non-current-gameweek and empty-league replies are
-      still plain text.
-- [ ] The scores handler tests assert on the embed structure, including a case
-      for the provisional colour/footer and a case for the final colour/footer.
-- [ ] `go test ./...` is green.
+      managers as a dash — same rows and order as today. (`renderScores` →
+      `dataEmbed` + `codeBlock(scoresTable(rows))`; sort + dash logic unchanged
+      in `handleScores`)
+- [x] The embed colour is the provisional value while the gameweek is unfinished
+      and the final value once it is finished. (`colorProvisional` / `colorFinal`
+      keyed on `snap.GWFinished`)
+- [x] The provisional / final wording is in the footer, not the title; the league
+      name is on the author line. (title `"GW{n} scores"`; footer
+      `"provisional — scores can still move"` / `"final"`; author via `dataEmbed`)
+- [x] The embed's `Timestamp` equals the snapshot's build time. (via `dataEmbed`,
+      `Snapshot.BuiltAt` formatted RFC 3339)
+- [x] The startup-not-ready, non-current-gameweek and empty-league replies are
+      still plain text. (each asserted with `len(r.embeds) == 0`)
+- [x] The scores handler tests assert on the embed structure, including a case
+      for the provisional colour/footer
+      (`TestHandleScores_ProvisionalColourAndFooterWhileGameweekLive`) and a case
+      for the final colour/footer
+      (`TestHandleScores_FinalColourAndFooterOnceGameweekFinished`).
+- [x] `go test ./...` is green.
+
+## Comments
+
+`scoresTable` keeps `text/tabwriter` (only two columns, both simple; no capped
+multi-byte name and no mixed per-column alignment), unlike `/standings`'s
+hand-rolled `standingsTable` — consistent with the ADR 0002 amendment from
+ticket 02.

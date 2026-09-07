@@ -50,13 +50,13 @@ func handleStandings(in *cmdInput) error {
 // renderStandings builds the /standings embed: the shared scaffold (league name
 // on the author line, neutral colour bar, gameweek-context footer, snapshot-time
 // Timestamp) with the aligned table as a fenced code block in the description.
-func renderStandings(leagueName string, builtAt time.Time, currentGW int, rows []fpl.StandingRow) *discordgo.MessageEmbed {
+func renderStandings(leagueName string, builtAt time.Time, gw int, rows []fpl.StandingRow) *discordgo.MessageEmbed {
 	e := dataEmbed(
 		leagueName,
 		builtAt,
 		"Standings",
 		colorNeutral,
-		fmt.Sprintf("GW%d · total points league", currentGW),
+		fmt.Sprintf("GW%d · total points league", gw),
 	)
 	e.Description = codeBlock(standingsTable(rows))
 	return e
