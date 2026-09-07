@@ -39,12 +39,20 @@ func (s *Snapshot) ManagerScore(id EntryID, gw int) (ManagerScore, error) {
 		return ManagerScore{}, fmt.Errorf("manager score: no live feed for GW %d", gw)
 	}
 
+	// Resolve each pick's position from bootstrap-static. Built from the exported
+	// Elements slice rather than the unexported index so ManagerScore stays a
+	// pure function of the exported Snapshot fields — sibling-package seam tests
+	// (internal/web) construct a Snapshot literal and call it directly.
+	posByElement := make(map[ElementID]Pos, len(s.Bootstrap.Elements))
+	for i := range s.Bootstrap.Elements {
+		e := &s.Bootstrap.Elements[i]
+		posByElement[e.ID] = Pos(e.ElementType)
+	}
+
 	picks := make([]Pick, len(ev.Picks))
 	copy(picks, ev.Picks)
 	for i := range picks {
-		if el, ok := s.elementByID[picks[i].Element]; ok {
-			picks[i].Pos = Pos(el.ElementType)
-		}
+		picks[i].Pos = posByElement[picks[i].Element]
 	}
 
 	xi := ApplyAutoSubs(picks, ev.Subs, live, s.Bootstrap.Settings.Squad)

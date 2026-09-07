@@ -8,14 +8,9 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/UberJoe/fpldiscord/internal/fpl"
 )
-
-type fakeSnap struct {
-	t  time.Time
-	ok bool
-}
-
-func (f fakeSnap) BuiltAt() (time.Time, bool) { return f.t, f.ok }
 
 func testServer(snap SnapshotProvider) http.Handler {
 	return New(slog.New(slog.NewTextHandler(io.Discard, nil)), snap).Handler()
@@ -24,7 +19,7 @@ func testServer(snap SnapshotProvider) http.Handler {
 func TestHealthz_AlwaysOK_WithBuiltAtWhenSnapshotExists(t *testing.T) {
 	built := time.Date(2026, 9, 6, 14, 3, 0, 0, time.UTC)
 	rec := httptest.NewRecorder()
-	testServer(fakeSnap{t: built, ok: true}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	testServer(staticProvider{snap: &fpl.Snapshot{BuiltAt: built}}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
@@ -43,7 +38,7 @@ func TestHealthz_AlwaysOK_WithBuiltAtWhenSnapshotExists(t *testing.T) {
 
 func TestHealthz_OKBeforeFirstSnapshot_NoBuiltAt(t *testing.T) {
 	rec := httptest.NewRecorder()
-	testServer(fakeSnap{ok: false}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	testServer(staticProvider{snap: nil}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
@@ -57,7 +52,7 @@ func TestHealthz_OKBeforeFirstSnapshot_NoBuiltAt(t *testing.T) {
 
 func TestSPA_ServesIndexForUnknownRoute(t *testing.T) {
 	rec := httptest.NewRecorder()
-	testServer(fakeSnap{ok: false}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/manager/42", nil))
+	testServer(staticProvider{snap: nil}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/manager/42", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("SPA fallback status = %d, want 200", rec.Code)
@@ -69,7 +64,7 @@ func TestSPA_ServesIndexForUnknownRoute(t *testing.T) {
 
 func TestSPA_ServesIndexAtRoot(t *testing.T) {
 	rec := httptest.NewRecorder()
-	testServer(fakeSnap{ok: false}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	testServer(staticProvider{snap: nil}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("root status = %d, want 200", rec.Code)

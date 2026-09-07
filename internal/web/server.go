@@ -1,7 +1,8 @@
-// Package web serves the embedded phone-first SPA and (from ticket 05) the
-// /api/* JSON surface that feeds it. Ticket 01 establishes the http.Server
-// wiring, the /healthz endpoint, the SPA file server with index.html fallback,
-// and the shared logging + panic-recover wrapper.
+// Package web serves the embedded phone-first SPA and the /api/* JSON surface
+// that feeds it. Ticket 01 establishes the http.Server wiring, the /healthz
+// endpoint, the SPA file server with index.html fallback, and the shared
+// logging + panic-recover wrapper. Ticket 05 adds the shared {meta, data}
+// envelope and GET /api/standings.
 package web
 
 import (
@@ -10,15 +11,16 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/UberJoe/fpldiscord/internal/fpl"
 )
 
-// SnapshotProvider is the read side of fpl.Store that web needs. Kept as a
-// consumer-side interface so web does not import the whole fpl surface for a
-// timestamp.
+// SnapshotProvider is the read side of fpl.Store that web needs: the current
+// immutable snapshot, or nil before the first successful build. Kept as a
+// consumer-side interface so the handlers can be driven by a hand-built
+// *fpl.Snapshot in tests.
 type SnapshotProvider interface {
-	// BuiltAt reports when the current snapshot was built, and false if there
-	// is no snapshot yet.
-	BuiltAt() (time.Time, bool)
+	Current() *fpl.Snapshot
 }
 
 // Server bundles the HTTP handler for the bot's web surface.
@@ -37,6 +39,7 @@ func New(log *slog.Logger, snap SnapshotProvider) *Server {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
+	mux.HandleFunc("GET /api/standings", s.handleStandings)
 
 	sub, err := fs.Sub(distFS, "dist")
 	if err != nil {
@@ -50,8 +53,8 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	body := map[string]any{"status": "ok"}
-	if built, ok := s.snap.BuiltAt(); ok {
-		body["builtAt"] = built.UTC().Format(time.RFC3339)
+	if snap := s.snap.Current(); snap != nil {
+		body["builtAt"] = snap.BuiltAt.UTC().Format(time.RFC3339)
 	}
 	writeJSON(w, http.StatusOK, body)
 }

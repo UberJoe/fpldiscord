@@ -48,3 +48,73 @@ func (s *Snapshot) Standings() []StandingRow {
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Rank < rows[j].Rank })
 	return rows
 }
+
+// LiveStandingRow is one row of the live-ordered classic table behind the web
+// Standings view: the manager's frozen season figures joined to this
+// gameweek's live points (auto-subs applied), plus the live rank and the
+// movement arrow. It carries EntryID because the web drill-down route keys on
+// it; the classic /standings Discord command uses StandingRow instead.
+type LiveStandingRow struct {
+	EntryID      EntryID
+	OwnerName    string
+	EntryName    string
+	OfficialRank int
+	LiveRank     int
+	Arrow        int // OfficialRank - LiveRank; positive = climbed within the GW
+	TotalPoints  int // frozen season total, excludes the live GW
+	LiveGwPoints int // ManagerScore(EntryID, CurrentGW).Total
+	LivePoints   int // TotalPoints + LiveGwPoints
+}
+
+// LiveStandings returns the classic league table re-sorted by live points
+// (frozen season total plus this gameweek so far), with LiveRank and the
+// within-gameweek movement arrow assigned. All ordering and rank maths happen
+// here so the web client only renders array order.
+//
+// Classic only: nil in h2h mode, matching Standings. A manager whose gameweek
+// score cannot be computed yet (no picks submitted, or no live feed) counts as
+// 0 live points rather than dropping out of the table.
+func (s *Snapshot) LiveStandings() []LiveStandingRow {
+	if s.LeagueMode != ModeClassic {
+		return nil
+	}
+
+	entryByLeague := make(map[LeagueEntryID]LeagueEntry, len(s.LeagueDetails.LeagueEntries))
+	for _, le := range s.LeagueDetails.LeagueEntries {
+		entryByLeague[le.ID] = le
+	}
+
+	rows := make([]LiveStandingRow, 0, len(s.LeagueDetails.Standings))
+	for _, st := range s.LeagueDetails.Standings {
+		le := entryByLeague[st.LeagueEntry]
+
+		liveGw := 0
+		if ms, err := s.ManagerScore(le.EntryID, s.CurrentGW); err == nil {
+			liveGw = ms.Total
+		}
+
+		rows = append(rows, LiveStandingRow{
+			EntryID:      le.EntryID,
+			OwnerName:    le.PlayerFirstName,
+			EntryName:    le.EntryName,
+			OfficialRank: st.Rank,
+			TotalPoints:  st.Total,
+			LiveGwPoints: liveGw,
+			LivePoints:   st.Total + liveGw,
+		})
+	}
+
+	// Live order: most live points first. Ties keep official-rank order so the
+	// result is deterministic.
+	sort.SliceStable(rows, func(i, j int) bool {
+		if rows[i].LivePoints != rows[j].LivePoints {
+			return rows[i].LivePoints > rows[j].LivePoints
+		}
+		return rows[i].OfficialRank < rows[j].OfficialRank
+	})
+	for i := range rows {
+		rows[i].LiveRank = i + 1
+		rows[i].Arrow = rows[i].OfficialRank - rows[i].LiveRank
+	}
+	return rows
+}

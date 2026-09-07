@@ -67,3 +67,87 @@ func TestStandings_SortedByRankClassicOnly(t *testing.T) {
 		t.Errorf("h2h Standings() = %+v, want nil", got)
 	}
 }
+
+// liveStandingsSnapshot: GW5, two classic managers. M1 (LE 1 / entry 500) is
+// official rank 1 on 100 season points with no live points this GW; M2 (LE 2 /
+// entry 600) is rank 2 on 90 but scores 20 live (element 601), so live order is
+// M2 then M1.
+func liveStandingsSnapshot() *Snapshot {
+	var p pieces
+	p.currentGW = 5
+	p.game = Game{CurrentEvent: 5}
+
+	els := make([]Element, 0, 11)
+	live := LiveGW{
+		Fixtures: []LiveFixture{{ID: 1, Started: true, FinishedProvisional: true}},
+		Elements: map[ElementID]LiveElement{
+			601: {Stats: LiveStats{TotalPoints: 20, Minutes: 90}},
+		},
+	}
+	for i := 0; i < 11; i++ {
+		els = append(els, Element{ID: ElementID(500 + i), ElementType: 3})
+		els = append(els, Element{ID: ElementID(600 + i), ElementType: 3})
+	}
+	p.bootstrap = Bootstrap{Elements: els}
+	p.live = live
+
+	p.details = LeagueDetails{
+		League: League{Name: "L", Scoring: "c"},
+		LeagueEntries: []LeagueEntry{
+			{ID: 1, EntryID: 500, EntryName: "Team A", PlayerFirstName: "Joe"},
+			{ID: 2, EntryID: 600, EntryName: "Team B", PlayerFirstName: "Sam"},
+		},
+		Standings: []Standing{
+			{Rank: 1, LeagueEntry: 1, Total: 100, EventTotal: 10},
+			{Rank: 2, LeagueEntry: 2, Total: 90, EventTotal: 40},
+		},
+	}
+	p.entries = map[EntryID]EntryEvent{
+		500: {Picks: xiSlots(500)},
+		600: {Picks: xiSlots(600)},
+	}
+	return assemble(p, time.Now().UTC(), false)
+}
+
+// xiSlots is a submitted XI (positions 1..11) starting at startElem.
+func xiSlots(startElem int) []Pick {
+	ps := make([]Pick, 0, 11)
+	for i := 0; i < 11; i++ {
+		ps = append(ps, Pick{Element: ElementID(startElem + i), Position: i + 1, Multiplier: 1})
+	}
+	return ps
+}
+
+func TestLiveStandings_SortedByLivePointsWithRanksAndArrows(t *testing.T) {
+	rows := liveStandingsSnapshot().LiveStandings()
+	if len(rows) != 2 {
+		t.Fatalf("len(rows) = %d, want 2", len(rows))
+	}
+
+	// M2 (entry 600) leads on live points despite official rank 2.
+	first, second := rows[0], rows[1]
+	if first.EntryID != 600 || first.OwnerName != "Sam" || first.EntryName != "Team B" {
+		t.Errorf("rows[0] = %+v, want entry 600 / Sam / Team B", first)
+	}
+	if first.OfficialRank != 2 || first.LiveRank != 1 || first.Arrow != 1 {
+		t.Errorf("rows[0] ranks = official %d live %d arrow %d, want 2 / 1 / 1", first.OfficialRank, first.LiveRank, first.Arrow)
+	}
+	if first.TotalPoints != 90 || first.LiveGwPoints != 20 || first.LivePoints != 110 {
+		t.Errorf("rows[0] points = %d / %d / %d, want 90 / 20 / 110", first.TotalPoints, first.LiveGwPoints, first.LivePoints)
+	}
+
+	if second.EntryID != 500 || second.LiveRank != 2 || second.Arrow != -1 {
+		t.Errorf("rows[1] = %+v, want entry 500 live rank 2 arrow -1", second)
+	}
+	if second.LiveGwPoints != 0 || second.LivePoints != 100 {
+		t.Errorf("rows[1] points = gw %d live %d, want 0 / 100", second.LiveGwPoints, second.LivePoints)
+	}
+}
+
+func TestLiveStandings_NilInH2HMode(t *testing.T) {
+	snap := liveStandingsSnapshot()
+	snap.LeagueMode = ModeH2H
+	if got := snap.LiveStandings(); got != nil {
+		t.Errorf("LiveStandings() in h2h = %+v, want nil", got)
+	}
+}
