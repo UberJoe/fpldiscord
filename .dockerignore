@@ -16,5 +16,5 @@ tmp/
 # local tooling / build output — not needed in the build context
 Taskfile.yml
 .air.toml
-.nvmrc
+web/.nvmrc
 bin/

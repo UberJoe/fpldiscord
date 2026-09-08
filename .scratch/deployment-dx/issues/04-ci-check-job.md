@@ -27,21 +27,53 @@ ticket — that is 05.
 The workflow file itself has no dependency; if 01 is not yet done, land the
 workflow and add the target in a follow-up.
 
-**Status:** ready-for-agent
+**Status:** in-review
 
-- [ ] `.github/workflows/ci.yml` exists with `pull_request`→`main`, `push`→`main`,
+- [x] `.github/workflows/ci.yml` exists with `pull_request`→`main`, `push`→`main`,
       and `workflow_dispatch` triggers.
-- [ ] `web/.nvmrc` contains `22`.
-- [ ] The `test` job runs `go build`, `go vet`, `go test`, `npm run typecheck`,
-      and `actionlint`, and fails if any fails.
-- [ ] Go version comes from `go.mod`; Node version from `web/.nvmrc` — no version
-      literal in the workflow.
-- [ ] `actionlint` passes on the workflow file itself.
-- [ ] `task lint:ci` runs `actionlint` over `.github/workflows/` locally and
-      passes on the new workflow.
-- [ ] On a scratch PR against `main`, the `test` job runs and is green; it also
-      runs on a push to `main`.
+- [x] `web/.nvmrc` contains `22`.
+- [x] The `test` job runs `go build`, `go vet`, `go test`, `npm run typecheck`,
+      and `actionlint`, and fails if any fails. — `fail_level: error` on the
+      reviewdog actionlint step; the `run:` steps fail the job by exit code.
+- [x] Go version comes from `go.mod`; Node version from `web/.nvmrc` — no version
+      literal in the workflow. — `go-version-file: go.mod`,
+      `node-version-file: web/.nvmrc`; grep for a digit-only version in the file
+      finds none.
+- [x] `actionlint` passes on the workflow file itself. — `actionlint v1.7.12`
+      (installed via `go install`) exits 0 on `.github/workflows/ci.yml`. It
+      caught `fail_on_error` as deprecated during implementation; switched to
+      `fail_level: error`.
+- [x] `task lint:ci` runs `actionlint` over `.github/workflows/` locally and
+      passes on the new workflow. — `task lint:ci` exits 0 with actionlint on
+      PATH; skips cleanly (exit 0, install hint printed) when it is absent.
+- [~] On a scratch PR against `main`, the `test` job runs and is green; it also
+      runs on a push to `main`. — Seam-3 acceptance: the workflow's first real
+      run. Locally the full command set (`go build`/`go vet`/`go test` +
+      `web` `npm run typecheck` + `actionlint`) is green.
 
 ## Comments
 
-_(none)_
+### 2026-09-08 — implemented
+
+`.github/workflows/ci.yml` added: `name: CI`, triggers `pull_request` →`main` /
+`push` →`main` / `workflow_dispatch`, `permissions: contents: read`, one `test`
+job on `ubuntu-latest`. Steps: `actions/checkout@v4`; `actions/setup-go@v5`
+(`go-version-file: go.mod`, `cache: true`); `actions/setup-node@v4`
+(`node-version-file: web/.nvmrc`, `cache: npm`,
+`cache-dependency-path: web/package-lock.json`); `go build ./...`;
+`go vet ./...`; `go test ./...`; `npm ci` + `npm run typecheck` in `web/`;
+`reviewdog/action-actionlint@v1` (`fail_level: error`). No web bundle build —
+the committed `internal/web/dist/index.html` placeholder satisfies the embed.
+
+`web/.nvmrc` created with `22` (matches `Dockerfile` `node:22-alpine`).
+
+`task lint:ci` added to `Taskfile.yml` (after `deploy`): runs bare `actionlint`
+(auto-discovers `.github/workflows/`); if `actionlint` is not on PATH it prints
+an install hint and exits 0 so a local check run is never blocked.
+
+`.dockerignore`: the `.nvmrc` entry (added in ticket 01 at repo-root scope) is
+now `web/.nvmrc` — the file lives under `web/`, which the `Dockerfile` copies in
+stage 1, so the root-scoped pattern would not have excluded it.
+
+Action versions pinned at `@vX` (`@v4`/`@v5`/`@v1`), per the ticket; SHA-pinning
+is left as a later repo-wide choice.

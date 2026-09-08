@@ -1,0 +1,69 @@
+name: CI
+
+# The check suite that gates every change to `main`. Runs on every pull request
+# to `main` and again on the push to `main` itself (a bad merge resolution or a
+# race between two PRs is caught before it can ship). `workflow_dispatch` allows
+# a manual re-run. The deploy job lands in ticket 05 as a `needs: test` job
+# guarded to `push` on `refs/heads/main`.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Go toolchain from go.mod — the module is the single source of truth for
+      # the version; module + build cache keyed on go.sum automatically.
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Node from web/.nvmrc (pins 22 to match the Dockerfile's node:22-alpine);
+      # npm cache keyed on the web/ lockfile.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # The web bundle is NOT built here: the committed placeholder
+      # internal/web/dist/index.html satisfies the //go:embed, so the Go build
+      # compiles, and `npm run typecheck` below covers the frontend.
+      - name: go build
+        run: go build ./...
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test ./...
+
+      - name: web install
+        run: npm ci
+        working-directory: web
+
+      - name: web typecheck
+        run: npm run typecheck
+        working-directory: web
+
+      # Lints the workflow YAML and its expressions. Kept last so a green run
+      # means the checks above already passed; also available locally via
+      # `task lint:ci`.
+      - name: actionlint
+        uses: reviewdog/action-actionlint@v1
+        with:
+          fail_level: error

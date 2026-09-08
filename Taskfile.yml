@@ -121,3 +121,19 @@ tasks:
         echo "Automated deploy on merge to 'main' is the normal path."
         echo "Use this only for a hotfix or when CI is unavailable."
       - flyctl deploy
+
+  lint:ci:
+    desc: Lint the GitHub Actions workflows with actionlint (CI pre-flight)
+    silent: true
+    cmds:
+      # actionlint is a developer-optional pre-flight — CI always runs it. Skip
+      # cleanly (exit 0) when it isn't on PATH so `task lint:ci` never blocks a
+      # local check run. `command -v` resolves real PATH binaries in go-task's
+      # embedded shell.
+      - |
+        if ! command -v actionlint >/dev/null 2>&1; then
+          echo "actionlint not installed — skipping (CI always runs it)."
+          echo "install: go install github.com/rhysd/actionlint/cmd/actionlint@latest"
+          exit 0
+        fi
+        actionlint
