@@ -6,7 +6,8 @@
 # which recent go-task bundles as interpreter builtins — go-task >= 3.41.
 #
 # Prerequisites (installed once, see README): Go (version from go.mod), Node 22,
-# go-task, air. `task dev` also needs `web/node_modules` (`npm install` in web/).
+# go-task, air, and Docker Desktop for `task docker`. `task dev` also needs
+# `web/node_modules` (`npm install` in web/).
 
 version: '3'
 
@@ -67,8 +68,26 @@ tasks:
     cmds:
       - npm run build
 
+  docker:
+    desc: Build the production Docker image and run it locally against .env
+    silent: true
+    cmds:
+      # Same guard as `dev`: --env-file .env fails cryptically without it.
+      - |
+        if [ ! -f .env ]; then
+          echo "no .env found — run 'task setup' first"
+          exit 1
+        fi
+      - docker build -t fpldiscord:local .
+      # --env-file supplies config; -e DB_PATH overrides .env's ./fpldiscord.db
+      # (right for `go run`, wrong in the image). The named volume mirrors fly's
+      # /data mount so the SQLite DB and warm snapshot survive across runs.
+      - >
+        docker run --rm -it --env-file .env -e DB_PATH=/data/fpldiscord.db
+        -v fpldiscord_local_data:/data -p 8080:8080 fpldiscord:local
+
   db:reset:
-    desc: Delete the local SQLite database and its WAL/SHM siblings
+    desc: Delete the local SQLite DB (files + the `task docker` data volume)
     silent: true
     cmds:
       - |
@@ -79,6 +98,12 @@ tasks:
             removed="$removed $f"
           fi
         done
+        # Also drop the `task docker` named volume. `-f` makes a missing volume a
+        # no-op; the `|| true` covers Docker not being installed/running at all.
+        # `docker volume rm` echoes the name on a real removal, nothing if absent.
+        if [ -n "$(docker volume rm -f fpldiscord_local_data 2>/dev/null || true)" ]; then
+          removed="$removed fpldiscord_local_data(volume)"
+        fi
         if [ -n "$removed" ]; then
           echo "removed:$removed"
         else
