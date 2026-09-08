@@ -1,10 +1,16 @@
 name: CI
 
-# The check suite that gates every change to `main`. Runs on every pull request
-# to `main` and again on the push to `main` itself (a bad merge resolution or a
-# race between two PRs is caught before it can ship). `workflow_dispatch` allows
-# a manual re-run. The deploy job lands in ticket 05 as a `needs: test` job
-# guarded to `push` on `refs/heads/main`.
+# The pipeline that gates and ships every change to `main`.
+#
+# `test` runs on every pull request to `main` and again on the push to `main`
+# itself (a bad merge resolution or a race between two PRs is caught before it
+# can ship); `workflow_dispatch` allows a manual re-run.
+#
+# `deploy` runs only on the push to `main`, only after `test` passes: it ships
+# via fly's remote builder and then polls `/healthz` until it is `200`. A
+# `deploy-production` concurrency group serialises overlapping merges against the
+# single machine / volume. No rollback — a failed deploy or health poll leaves
+# the job red and the release halted (see docs/runbook.md).
 
 on:
   pull_request:
@@ -67,3 +73,54 @@ jobs:
         uses: reviewdog/action-actionlint@v1
         with:
           fail_level: error
+
+  deploy:
+    name: deploy
+    needs: test
+    # Push to `main` only — never a pull request, never a workflow_dispatch from
+    # another ref. PR branches can't reach production.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # Overlapping merges queue instead of racing the single machine / volume;
+    # an in-flight deploy is never cancelled.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@1.5
+
+      # Remote builder — the runner needs no Docker. fly.toml at the repo root
+      # supplies the app, region, volume, and `strategy = "immediate"`.
+      - name: Deploy
+        run: flyctl deploy --remote-only
+
+      # `/healthz` is unconditionally 200 once the HTTP listener is bound. With
+      # `strategy = "immediate"` the single machine replaces, so expect ~35-40 s
+      # of connection-refused first, then 200. Poll for up to 90 s, tolerate the
+      # refused window, and fail the job if 200 never comes. No rollback.
+      - name: Health check
+        run: |
+          url="https://fpldiscord.fly.dev/healthz"
+          budget=90
+          interval=3
+          elapsed=0
+          attempt=0
+          while [ "$elapsed" -lt "$budget" ]; do
+            attempt=$((attempt + 1))
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$url") || code="000"
+            if [ "$code" = "200" ]; then
+              echo "healthz returned 200 on attempt $attempt (~${elapsed}s elapsed)"
+              exit 0
+            fi
+            echo "attempt $attempt: healthz='$code' (~${elapsed}s elapsed) — retrying in ${interval}s"
+            sleep "$interval"
+            elapsed=$((elapsed + interval))
+            [ "$interval" -lt 10 ] && interval=$((interval + 2))
+          done
+          echo "::error::healthz never returned 200 within ${budget}s of the deploy finishing"
+          exit 1
