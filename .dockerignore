@@ -17,4 +17,5 @@ tmp/
 Taskfile.yml
 .air.toml
 web/.nvmrc
+scripts/
 bin/
