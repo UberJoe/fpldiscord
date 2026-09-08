@@ -1,0 +1,86 @@
+# fpldiscord routine commands. Run `task` (no args) for the catalogue.
+#
+# go-task executes every `cmd` through its embedded POSIX shell, not the OS
+# shell, so the bodies below are portable `sh` and run identically in PowerShell,
+# git-bash, and CI with no bash install. `setup` and `db:reset` use `cp`/`rm`,
+# which recent go-task bundles as interpreter builtins — go-task >= 3.41.
+#
+# Prerequisites (installed once, see README): Go (version from go.mod), Node 22,
+# go-task, air. `task dev` also needs `web/node_modules` (`npm install` in web/).
+
+version: '3'
+
+tasks:
+  default:
+    desc: List the available tasks
+    cmds:
+      - task --list
+    silent: true
+
+  setup:
+    desc: Create .env from .env.example (no-op if .env already exists)
+    silent: true
+    cmds:
+      - |
+        if [ -f .env ]; then
+          echo "keeping existing .env"
+        else
+          cp .env.example .env
+          echo "created .env — fill in your secrets"
+        fi
+
+  dev:
+    desc: "Run the whole local loop: Vite watch build + Go bot with restart-on-save"
+    silent: true
+    cmds:
+      - |
+        if [ ! -f .env ]; then
+          echo "no .env found — run 'task setup' first"
+          exit 1
+        fi
+      # concurrently (web/ devDependency) ties both process lifetimes together:
+      # --kill-others tears down the survivor when either the watch build or the
+      # bot exits or crashes, and Ctrl-C stops both with no orphan on the port.
+      # The web command runs in web/; air runs from the repo root (.air.toml).
+      - >
+        cd web && npx concurrently --kill-others --names web,bot --prefix-colors cyan,green
+        "npm run build -- --watch"
+        "cd .. && air"
+
+  test:
+    desc: Run the checks CI runs — go build, go vet, go test, and the web typecheck
+    cmds:
+      - go build ./...
+      - go vet ./...
+      - go test ./...
+      - cd web && npm run typecheck
+
+  build:
+    desc: Build the release binary the image's way (web assets, then go build)
+    cmds:
+      - task: web:build
+      - go build -o ./bin/fpldiscord ./cmd/fpldiscord
+
+  web:build:
+    desc: One-shot frontend build into internal/web/dist
+    dir: web
+    cmds:
+      - npm run build
+
+  db:reset:
+    desc: Delete the local SQLite database and its WAL/SHM siblings
+    silent: true
+    cmds:
+      - |
+        removed=""
+        for f in fpldiscord.db fpldiscord.db-wal fpldiscord.db-shm; do
+          if [ -f "$f" ]; then
+            rm -f "$f"
+            removed="$removed $f"
+          fi
+        done
+        if [ -n "$removed" ]; then
+          echo "removed:$removed"
+        else
+          echo "nothing to remove"
+        fi
