@@ -205,7 +205,20 @@ elif git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 fi
 REPO="${REPO:-UberJoe/fpldiscord}"
 
-FLY_HEALTH_URL="https://fpldiscord.fly.dev/healthz"
+# Resolve the fly app name — 'fly tokens create deploy' needs one, and it only
+# auto-reads fly.toml from the *current* directory. Read it from fly.toml at the
+# repo root so the wizard works from anywhere (e.g. run from scripts/). Override
+# with FLY_APP=<name>.
+FLY_APP="${FLY_APP:-}"
+if [[ -z "$FLY_APP" ]]; then
+  _repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+  if [[ -n "$_repo_root" && -f "$_repo_root/fly.toml" ]]; then
+    FLY_APP=$(sed -nE 's/^app[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$_repo_root/fly.toml" | head -n1)
+  fi
+fi
+FLY_APP="${FLY_APP:-fpldiscord}"
+
+FLY_HEALTH_URL="https://${FLY_APP}.fly.dev/healthz"
 
 banner "Fly deploy token → CI"
 
@@ -226,10 +239,20 @@ step "Check who you are:  $FLY auth whoami"
   pause "Logged in now?"
   "$FLY" auth whoami
 }
-confirm "Is that the account that owns the 'fpldiscord' app?" || {
+confirm "Is that the account that owns the '$FLY_APP' app?" || {
   say "Run '$FLY auth login' as the correct account, then re-run this wizard."
   exit 1
 }
+
+# Guard — stage 2's mint fails deep inside 'fly tokens create' with an opaque
+# "Could not find App" if the app doesn't resolve for this account. Catch it here.
+step "Confirm '$FLY_APP' is reachable:  $FLY status -a $FLY_APP"
+if ! "$FLY" status -a "$FLY_APP" >/dev/null 2>&1; then
+  warn "Can't resolve a fly app named '$FLY_APP' for this account."
+  say "Check the name in fly.toml (app = \"...\"), or pass it explicitly:"
+  say "    FLY_APP=<app> bash \"$0\""
+  exit 1
+fi
 
 # ── Stage 2 — mint a deploy-scoped token ─────────────────────────────────
 stage "Mint the deploy token"
@@ -238,9 +261,9 @@ say "org token and not a personal access token. One-year expiry (8760h)."
 warn "fly prints the token value exactly once. Copy the whole 'FlyV1 …' string"
 warn "the moment it appears — including the 'FlyV1 ' prefix and any trailing =."
 pause "Ready to mint it?"
-step "Running:  $FLY tokens create deploy -x 8760h -n \"github-actions-deploy\""
+step "Running:  $FLY tokens create deploy -a $FLY_APP -x 8760h -n \"github-actions-deploy\""
 printf '\n'
-"$FLY" tokens create deploy -x 8760h -n "github-actions-deploy"
+"$FLY" tokens create deploy -a "$FLY_APP" -x 8760h -n "github-actions-deploy"
 printf '\n'
 say "Select and copy the FlyV1 token above now."
 pause "Copied?"
