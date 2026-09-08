@@ -4,6 +4,9 @@
 *.test
 *.out
 
+# --- task build output ---
+/bin/
+
 # --- SQLite (local dev) ---
 *.db
 *.db-wal

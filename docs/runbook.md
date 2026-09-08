@@ -56,12 +56,40 @@ so expect ~40 s of downtime while the machine replaces.
 
 ## Routine deploy
 
+**The routine path is: merge the feature branch to `main`.** There is no manual
+step. GitHub Actions
+([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) runs the full check
+suite (`go build` / `go vet` / `go test`, the `web` typecheck, `actionlint`) on
+every pull request to `main` and again on the push to `main` itself; on green,
+and only on the push to `main`, it runs `flyctl deploy --remote-only` and then
+polls `https://fpldiscord.fly.dev/healthz` until it returns `200`.
+
+A concurrency guard serialises overlapping merges so two of them can't deploy
+over each other against the single machine and volume. There is **no automatic
+rollback** — a failed `flyctl deploy` or a failed health poll leaves the release
+halted on fly for inspection (see [Rollback](#rollback)).
+
+Migrations are forward-only and additive, applied on boot with fail-fast: a bad
+migration stops the release rather than corrupting data.
+
+---
+
+## Manual deploy (break-glass)
+
+Not normally needed — the automated pipeline above is the default way to ship.
+Reach for this only for a hotfix or when CI is unavailable:
+
 ```bash
 fly deploy
 ```
 
-Migrations are forward-only and additive, applied on boot with fail-fast: a bad
-migration stops the release rather than corrupting data.
+`task deploy` is the same `fly deploy`, with a one-line reminder printed first
+that automated deploy on merge to `main` is the normal path. It runs without
+`--remote-only`, so it needs local Docker.
+
+`strategy = "immediate"` still applies (single machine, single volume), so expect
+~40 s of downtime while the machine replaces. Verify with the same checks as the
+[first-time cutover](#post-deploy-verification).
 
 ---
 

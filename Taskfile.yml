@@ -1,0 +1,139 @@
+# fpldiscord routine commands. Run `task` (no args) for the catalogue.
+#
+# go-task executes every `cmd` through its embedded POSIX shell, not the OS
+# shell, so the bodies below are portable `sh` and run identically in PowerShell,
+# git-bash, and CI with no bash install. `setup` and `db:reset` use `cp`/`rm`,
+# which recent go-task bundles as interpreter builtins — go-task >= 3.41.
+#
+# Prerequisites (installed once, see README): Go (version from go.mod), Node 22,
+# go-task, air, and Docker Desktop for `task docker`. `task dev` also needs
+# `web/node_modules` (`npm install` in web/).
+
+version: '3'
+
+tasks:
+  default:
+    desc: List the available tasks
+    cmds:
+      - task --list
+    silent: true
+
+  setup:
+    desc: Create .env from .env.example (no-op if .env already exists)
+    silent: true
+    cmds:
+      - |
+        if [ -f .env ]; then
+          echo "keeping existing .env"
+        else
+          cp .env.example .env
+          echo "created .env — fill in your secrets"
+        fi
+
+  dev:
+    desc: "Run the whole local loop: Vite watch build + Go bot with restart-on-save"
+    silent: true
+    cmds:
+      - |
+        if [ ! -f .env ]; then
+          echo "no .env found — run 'task setup' first"
+          exit 1
+        fi
+      # concurrently (web/ devDependency) ties both process lifetimes together:
+      # --kill-others tears down the survivor when either the watch build or the
+      # bot exits or crashes, and Ctrl-C stops both with no orphan on the port.
+      # The web command runs in web/; air runs from the repo root (.air.toml).
+      - >
+        cd web && npx concurrently --kill-others --names web,bot --prefix-colors cyan,green
+        "npm run build -- --watch"
+        "cd .. && air"
+
+  test:
+    desc: Run the checks CI runs — go build, go vet, go test, and the web typecheck
+    cmds:
+      - go build ./...
+      - go vet ./...
+      - go test ./...
+      - cd web && npm run typecheck
+
+  build:
+    desc: Build the release binary the image's way (web assets, then go build)
+    cmds:
+      - task: web:build
+      - go build -o ./bin/fpldiscord ./cmd/fpldiscord
+
+  web:build:
+    desc: One-shot frontend build into internal/web/dist
+    dir: web
+    cmds:
+      - npm run build
+
+  docker:
+    desc: Build the production Docker image and run it locally against .env
+    silent: true
+    cmds:
+      # Same guard as `dev`: --env-file .env fails cryptically without it.
+      - |
+        if [ ! -f .env ]; then
+          echo "no .env found — run 'task setup' first"
+          exit 1
+        fi
+      - docker build -t fpldiscord:local .
+      # --env-file supplies config; -e DB_PATH overrides .env's ./fpldiscord.db
+      # (right for `go run`, wrong in the image). The named volume mirrors fly's
+      # /data mount so the SQLite DB and warm snapshot survive across runs.
+      - >
+        docker run --rm -it --env-file .env -e DB_PATH=/data/fpldiscord.db
+        -v fpldiscord_local_data:/data -p 8080:8080 fpldiscord:local
+
+  db:reset:
+    desc: Delete the local SQLite DB (files + the `task docker` data volume)
+    silent: true
+    cmds:
+      - |
+        removed=""
+        for f in fpldiscord.db fpldiscord.db-wal fpldiscord.db-shm; do
+          if [ -f "$f" ]; then
+            rm -f "$f"
+            removed="$removed $f"
+          fi
+        done
+        # Also drop the `task docker` named volume. `-f` makes a missing volume a
+        # no-op; the `|| true` covers Docker not being installed/running at all.
+        # `docker volume rm` echoes the name on a real removal, nothing if absent.
+        if [ -n "$(docker volume rm -f fpldiscord_local_data 2>/dev/null || true)" ]; then
+          removed="$removed fpldiscord_local_data(volume)"
+        fi
+        if [ -n "$removed" ]; then
+          echo "removed:$removed"
+        else
+          echo "nothing to remove"
+        fi
+
+  deploy:
+    desc: "Break-glass manual deploy to fly — the normal path is merge to main"
+    silent: true
+    cmds:
+      # Not the normal path: a merge to `main` deploys via GitHub Actions. This
+      # target is for a hotfix or a CI outage. No --remote-only — a local deploy
+      # assumes the developer has Docker.
+      - |
+        echo "Automated deploy on merge to 'main' is the normal path."
+        echo "Use this only for a hotfix or when CI is unavailable."
+      - flyctl deploy
+
+  lint:ci:
+    desc: Lint the GitHub Actions workflows with actionlint (CI pre-flight)
+    silent: true
+    cmds:
+      # actionlint is a developer-optional pre-flight — CI always runs it. Skip
+      # cleanly (exit 0) when it isn't on PATH so `task lint:ci` never blocks a
+      # local check run. `command -v` resolves real PATH binaries in go-task's
+      # embedded shell.
+      - |
+        if ! command -v actionlint >/dev/null 2>&1; then
+          echo "actionlint not installed — skipping (CI always runs it)."
+          echo "install: go install github.com/rhysd/actionlint/cmd/actionlint@latest"
+          exit 0
+        fi
+        actionlint

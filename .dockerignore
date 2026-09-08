@@ -12,3 +12,10 @@ internal/web/dist
 *.md
 .github
 tmp/
+
+# local tooling / build output — not needed in the build context
+Taskfile.yml
+.air.toml
+web/.nvmrc
+scripts/
+bin/
