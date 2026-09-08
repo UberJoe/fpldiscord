@@ -21,7 +21,7 @@ ship.
 automated path should match tickets 04–05; safe to draft in parallel and reconcile
 terms before merge.
 
-**Status:** in-review
+**Status:** done
 
 - [x] `task deploy` prints the break-glass notice, then runs `flyctl deploy`. —
       `task deploy --summary` shows the two commands in order (echo notice, then

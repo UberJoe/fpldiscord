@@ -34,7 +34,7 @@ loop from one terminal.
 
 **Blocked by:** None — can start immediately.
 
-**Status:** in-review
+**Status:** done
 
 - [x] `Taskfile.yml` at repo root; bare `task` prints the task list with
       descriptions.
@@ -42,19 +42,19 @@ loop from one terminal.
       re-running with `.env` present changes nothing and says so.
 - [x] `task dev` with no `.env` exits telling the developer to run `task setup`
       and starts neither process.
-- [~] `task dev` with `.env` present starts both the Vite watch and the bot;
-      Ctrl-C stops both with no orphan process on the port. — orchestration
-      verified with stand-in commands (`npx concurrently` resolves from
-      `web/node_modules`, named `[web]`/`[bot]` prefixes, `--kill-others` tears
-      down the survivor); full run with `air` + a live bot session is Seam-2
-      manual acceptance.
-- [~] Saving a `.go` file under `task dev` rebuilds and restarts the binary. —
-      Seam-2 manual acceptance; `.air.toml` committed (`include_ext` has `go`,
-      `_test.go` excluded, `[build.windows]` handles the `.exe`).
-- [~] Saving a `web/` source file under `task dev` results in the running bot
+- [x] `task dev` with `.env` present starts both the Vite watch and the bot;
+      Ctrl-C stops both with no orphan process on the port. — Seam-2 manual
+      acceptance done on the Windows box 2026-09-08: both `[web]`/`[bot]` streams
+      start, the bot shuts down gracefully on Ctrl-C, `concurrently --kill-others`
+      tears down the survivor, and no LISTEN socket remains on 8080 (only
+      transient `TIME_WAIT`). The Windows `Terminate batch job (Y/N)?` prompt on
+      Ctrl-C is a cosmetic `cmd.exe` artifact of interrupting `npm.cmd`, not a
+      hang — both processes have already stopped.
+- [x] Saving a `.go` file under `task dev` rebuilds and restarts the binary. —
+      Seam-2 manual acceptance done 2026-09-08.
+- [x] Saving a `web/` source file under `task dev` results in the running bot
       serving the updated asset (Vite rebuild → `air` rebuild → embed refresh).
-      — Seam-2 manual acceptance; `.air.toml` watches `.html/.js/.css` under the
-      `internal/web/dist/` tree so a Vite rebuild triggers the Go rebuild.
+      — Seam-2 manual acceptance done 2026-09-08.
 - [x] `task test` runs `go build`/`go vet`/`go test` and the web typecheck; exit
       code reflects failure in any of them.
 - [x] `task build` produces `./bin/fpldiscord` with web assets embedded.
@@ -107,3 +107,10 @@ response:
 Both axes' remaining notes (Seam-2 manual acceptance still pending; `.nvmrc` in
 `.dockerignore` ahead of ticket 04 creating it, which ticket 01 mandates) are
 expected and not acted on.
+
+### 2026-09-08 — Seam-2 acceptance
+
+Ran on the Windows/PowerShell box. `task dev` starts the Vite watch and the bot
+under `air` from one terminal; a `.go` edit and a `web/` edit each flow through
+to a bot restart; Ctrl-C stops both with no listener left on 8080. Closed.
+(`.nvmrc` → `web/.nvmrc` in `.dockerignore` was corrected in ticket 04.)

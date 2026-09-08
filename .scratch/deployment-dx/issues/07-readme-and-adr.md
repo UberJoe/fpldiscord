@@ -33,7 +33,7 @@
 **Blocked by:** 01 (README documents its tasks). Deploy sections should match
 tickets 04–05 wording.
 
-**Status:** in-review
+**Status:** done
 
 - [x] `README.md` exists with overview, prerequisites, Quickstart, and the deploy
       pointer. — overview adapted from `CONTEXT.md`; prerequisites table (Go per
