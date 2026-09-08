@@ -109,3 +109,15 @@ tasks:
         else
           echo "nothing to remove"
         fi
+
+  deploy:
+    desc: "Break-glass manual deploy to fly — the normal path is merge to main"
+    silent: true
+    cmds:
+      # Not the normal path: a merge to `main` deploys via GitHub Actions. This
+      # target is for a hotfix or a CI outage. No --remote-only — a local deploy
+      # assumes the developer has Docker.
+      - |
+        echo "Automated deploy on merge to 'main' is the normal path."
+        echo "Use this only for a hotfix or when CI is unavailable."
+      - flyctl deploy
