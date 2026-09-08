@@ -25,7 +25,7 @@ after the check job passes, then confirms the release is healthy.
 cannot authenticate to fly or reach a green run without the `FLY_API_TOKEN`
 repository secret that 06 provisions.
 
-**Status:** in-review
+**Status:** done
 
 - [x] `deploy` job has `needs: test` and the `push` + `refs/heads/main` guard. —
       `if: github.event_name == 'push' && github.ref == 'refs/heads/main'`.
@@ -41,14 +41,16 @@ repository secret that 06 provisions.
       is tolerated; `exit 0` on first `200`, `::error::` + `exit 1` otherwise.
 - [x] No rollback logic anywhere in the job. — three steps only: checkout,
       setup-flyctl, deploy, health check. Nothing catches failure.
-- [~] A pull request against `main` runs `test` only — `deploy` does not appear.
-      — enforced by the `if:` guard (`pull_request` ⇒ `event_name != 'push'`);
-      confirmed by reading, proven on the introducing PR (Seam 3).
-- [~] First push to `main` after merge: `deploy` runs green and the `/healthz`
-      poll reaches `200`. — Seam-3 acceptance for the whole feature; needs the
-      `FLY_API_TOKEN` secret from ticket 06's wizard to be set first. Not
-      exercisable pre-merge. `actionlint` (which runs `shellcheck` on the
-      `run:` script) is green on the workflow.
+- [x] A pull request against `main` runs `test` only — `deploy` does not appear.
+      — PR #6: the `deploy` job showed as skipped (the `if:` guard is false on a
+      `pull_request` event); only `test` executed.
+- [x] First push to `main` after merge: `deploy` runs green and the `/healthz`
+      poll reaches `200`. — CI run 34229434715 on the merge push. First attempt
+      failed at `flyctl deploy` with "no access token available" — the
+      `FLY_API_TOKEN` secret had been registered with an empty value (an empty
+      paste at the wizard's interactive `gh secret set` prompt). Re-set via the
+      GitHub dashboard, then `gh run rerun --failed`: `deploy` green, `/healthz`
+      poll `200`, `fly releases` shows the CI-shipped release (v84) `complete`.
 
 ## Comments
 
@@ -77,3 +79,12 @@ The top-of-file comment is rewritten to describe both jobs.
 `actionlint` (with its embedded `shellcheck` pass over the `run:` block) is
 green; `go test ./...` unaffected. The first real deploy run is Seam-3 and
 depends on ticket 06 having populated `FLY_API_TOKEN`.
+
+### 2026-09-08 — Seam-3 acceptance (whole-feature)
+
+Merged PR #6. The post-merge `push` to `main` ran `test` (green) then `deploy`.
+`deploy` failed the first time — `FLY_API_TOKEN` had been stored empty — then,
+with the secret re-set, `gh run rerun --failed` took `deploy` green: `flyctl
+deploy --remote-only` authenticated, the remote builder shipped the image, and
+the `/healthz` poll returned `200`. `fly releases` shows the release (v84)
+`complete`. Pipeline proven end to end. Closed.

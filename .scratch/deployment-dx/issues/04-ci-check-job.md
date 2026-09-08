@@ -27,7 +27,7 @@ ticket — that is 05.
 The workflow file itself has no dependency; if 01 is not yet done, land the
 workflow and add the target in a follow-up.
 
-**Status:** in-review
+**Status:** done
 
 - [x] `.github/workflows/ci.yml` exists with `pull_request`→`main`, `push`→`main`,
       and `workflow_dispatch` triggers.
@@ -46,10 +46,10 @@ workflow and add the target in a follow-up.
 - [x] `task lint:ci` runs `actionlint` over `.github/workflows/` locally and
       passes on the new workflow. — `task lint:ci` exits 0 with actionlint on
       PATH; skips cleanly (exit 0, install hint printed) when it is absent.
-- [~] On a scratch PR against `main`, the `test` job runs and is green; it also
-      runs on a push to `main`. — Seam-3 acceptance: the workflow's first real
-      run. Locally the full command set (`go build`/`go vet`/`go test` +
-      `web` `npm run typecheck` + `actionlint`) is green.
+- [x] On a scratch PR against `main`, the `test` job runs and is green; it also
+      runs on a push to `main`. — PR #6: `CI` run 34228735245 (`pull_request`)
+      `test` green; run 34229434715 (`push` to `main`, after merge) `test` green
+      again.
 
 ## Comments
 
@@ -77,3 +77,9 @@ stage 1, so the root-scoped pattern would not have excluded it.
 
 Action versions pinned at `@vX` (`@v4`/`@v5`/`@v1`), per the ticket; SHA-pinning
 is left as a later repo-wide choice.
+
+### 2026-09-08 — Seam-3 acceptance
+
+PR #6 opened against `main`: the `CI` `test` job ran on `pull_request` and was
+green (`deploy` skipped, as it is push-only). On the post-merge `push` to `main`,
+`test` ran and was green again. Closed.

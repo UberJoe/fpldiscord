@@ -21,7 +21,7 @@ deploy token and registering it as a repository secret.
 
 **Blocked by:** None. Pairs with 05 — 05's first green deploy run needs this done.
 
-**Status:** in-review
+**Status:** done
 
 - [x] Wizard script exists and runs on the maintainer's machine (PowerShell OK).
       — `scripts/fly-deploy-token-wizard.sh` (from the `/wizard` template lib);
@@ -40,10 +40,11 @@ deploy token and registering it as a repository secret.
       `FLY_API_TOKEN`, paste, Add secret). Stage 4 opens `…/settings/branches`
       with the full rule steps and states plainly it is a recommendation no
       ticket applies.
-- [~] After the wizard, the `deploy` job in `ci.yml` authenticates to fly. —
-      Stage 5 is the verify step (trigger a `main` push / re-run, watch the
-      `deploy` job auth + `/healthz` poll). Not exercisable until ticket 05 adds
-      the `deploy` job; the wizard notes this.
+- [x] After the wizard, the `deploy` job in `ci.yml` authenticates to fly. —
+      confirmed 2026-09-08: with `FLY_API_TOKEN` set, CI run 34229434715's
+      `deploy` job ran `flyctl deploy --remote-only` with no auth error and
+      shipped release v84. (First set of the secret stored an empty value from an
+      empty paste at the interactive prompt — re-set via the dashboard fixed it.)
 
 ## Comments
 
@@ -81,3 +82,15 @@ browser and blocks on input) — traced statically per the `/wizard` skill:
 every stage traces to concrete instructions, and the `FLY_API_TOKEN` name
 matches the `secrets.FLY_API_TOKEN` reference ticket 05's `deploy` job will use.
 README linkage is ticket 07's.
+
+### 2026-09-08 — follow-up fix + acceptance
+
+Running the wizard from `scripts/` surfaced a bug: `fly tokens create deploy`
+needs an app (via `-a` or a `fly.toml` in the cwd), which the wizard passed
+neither of, so the mint died with an opaque "Could not find App". Fixed in
+`e647fc3`: resolve the app name from `fly.toml` at the repo root (override with
+`FLY_APP`), pass `-a "$FLY_APP"` to the mint, and add a `fly status` guard in
+stage 1. Also noted for future: the interactive `gh secret set` hidden prompt is
+easy to fat-finger into an empty value — the dashboard path is the reliable one.
+With the secret correctly set, the CI `deploy` job authenticated and shipped
+(v84). Closed.
