@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/UberJoe/fpldiscord/internal/fpl"
 	"github.com/bwmarrin/discordgo"
@@ -104,95 +103,28 @@ var overviewTitle = map[overviewMode]string{
 
 // renderOverview lays each fixture out as one non-inline embed field — the score
 // line as the field name, the goalscorer events (or a "no goals" note) as the
-// field value — and chunks those fields across Discord messages with an
-// overviewChunker. This replaces the old raw 2000-character text pagination with
-// limit-aware chunking while keeping the "spill to another message" behaviour a
-// big or double gameweek needs.
+// field value — and chunks those fields across Discord messages with the shared
+// embedFieldChunker. This replaces the old raw 2000-character text pagination
+// with limit-aware chunking while keeping the "spill to another message"
+// behaviour a big or double gameweek needs.
 //
-// The return is one []*discordgo.MessageEmbed per Discord message; the caller
-// sends each with a single RespondEmbeds call. Fixtures come pre-sorted by
-// kickoff.
+// The league name rides the footer (the fields carry the fixtures) and only the
+// first embed of the reply is titled. The return is one
+// []*discordgo.MessageEmbed per Discord message; the caller sends each with a
+// single RespondEmbeds call. Fixtures come pre-sorted by kickoff.
 func renderOverview(leagueName string, builtAt time.Time, gw int, mode overviewMode, fixtures []fpl.FixtureOverview) [][]*discordgo.MessageEmbed {
-	c := overviewChunker{
-		leagueName: leagueName,
-		builtAt:    builtAt,
-		title:      fmt.Sprintf("GW%d %s", gw, overviewTitle[mode]),
-		color:      overviewColor(fixtures),
-	}
+	c := newEmbedFieldChunker(embedFieldScaffold{
+		builtAt:        builtAt,
+		title:          fmt.Sprintf("GW%d %s", gw, overviewTitle[mode]),
+		color:          overviewColor(fixtures),
+		footer:         leagueName,
+		titleFirstOnly: true,
+	})
 	for _, f := range fixtures {
 		c.add(overviewFixtureHeader(f), capRunes(overviewFixtureBody(f), maxEmbedFieldValue))
 	}
 	c.flushMessage()
 	return c.messages
-}
-
-// overviewMessageCharBudget is the per-message character total the chunker stops
-// adding fields at. It sits a little below Discord's hard maxMessageEmbedChars
-// ceiling: the running count tracks field names, field values, the title and the
-// footers — almost the whole of what Discord sums — and the margin absorbs the
-// rest (newline and grapheme-vs-rune counting differences) so a real message can
-// never land over.
-const overviewMessageCharBudget = maxMessageEmbedChars - 200
-
-// overviewChunker packs one embed field per fixture into Discord messages,
-// respecting three limits at once: at most maxEmbedFields fields per embed, at
-// most maxEmbedsPerMessage embeds per message, and a per-message character
-// budget kept clear of the hard ceiling. Only the first embed of the whole reply
-// is titled; every embed carries the state colour bar and the league-name
-// footer. Field values are expected pre-truncated to the per-field limit.
-type overviewChunker struct {
-	leagueName string
-	builtAt    time.Time
-	title      string // stamped on the first embed, then cleared
-	color      int
-
-	messages [][]*discordgo.MessageEmbed
-	msg      []*discordgo.MessageEmbed // embeds accumulated for the current message
-	cur      *discordgo.MessageEmbed   // embed accumulating fields
-	msgChars int                       // approx character total across msg + cur
-}
-
-// add appends one fixture field, opening a new embed or message first whenever
-// this field would breach a limit.
-func (c *overviewChunker) add(name, value string) {
-	fieldChars := utf8.RuneCountInString(name) + utf8.RuneCountInString(value)
-
-	if c.cur != nil && c.msgChars+fieldChars > overviewMessageCharBudget {
-		c.flushMessage()
-	}
-	if c.cur == nil {
-		c.cur = dataEmbed("", c.builtAt, c.title, c.color, c.leagueName)
-		c.msgChars += utf8.RuneCountInString(c.title) + utf8.RuneCountInString(c.leagueName)
-		c.title = "" // the rest of the reply's embeds are untitled
-	}
-
-	c.cur.Fields = append(c.cur.Fields, &discordgo.MessageEmbedField{Name: name, Value: value})
-	c.msgChars += fieldChars
-
-	if len(c.cur.Fields) >= maxEmbedFields {
-		c.flushEmbed()
-		if len(c.msg) >= maxEmbedsPerMessage {
-			c.flushMessage()
-		}
-	}
-}
-
-// flushEmbed folds the in-progress embed into the current message.
-func (c *overviewChunker) flushEmbed() {
-	if c.cur != nil {
-		c.msg = append(c.msg, c.cur)
-		c.cur = nil
-	}
-}
-
-// flushMessage closes the current message, folding in any in-progress embed
-// first, and resets the character budget for the next one.
-func (c *overviewChunker) flushMessage() {
-	c.flushEmbed()
-	if len(c.msg) > 0 {
-		c.messages = append(c.messages, c.msg)
-		c.msg, c.msgChars = nil, 0
-	}
 }
 
 // overviewColor encodes the state of the shown fixtures on the embed colour bar:

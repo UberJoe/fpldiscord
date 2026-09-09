@@ -2,6 +2,7 @@ package bot
 
 import (
 	"time"
+	"unicode/utf8"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -73,4 +74,109 @@ func dataEmbed(leagueName string, builtAt time.Time, title string, color int, fo
 // fence lives in exactly one place.
 func codeBlock(body string) string {
 	return "```\n" + body + "\n```"
+}
+
+// embedMessageCharBudget is the per-message character total an embedFieldChunker
+// stops adding fields at. It sits a little below Discord's hard
+// maxMessageEmbedChars ceiling: the running count tracks field names, field
+// values, the title and the footer / author line — almost the whole of what
+// Discord sums — and the margin absorbs the rest (newline and grapheme-vs-rune
+// counting differences) so a real message can never land over.
+const embedMessageCharBudget = maxMessageEmbedChars - 200
+
+// embedFieldScaffold carries the dataEmbed parameters an embedFieldChunker
+// stamps on the embeds it builds. The league name goes on the author line, the
+// footer line, or both, purely by how the caller fills these in:
+//
+//   - /overview passes leagueName:"" and footer:<league name> — the fields carry
+//     the fixtures, so the league name rides the footer and there is no author.
+//   - /waivers and /bet pass leagueName:<league name> and a footer that names
+//     the view (the result mode, the season) — league name on the author line,
+//     state cue in the footer.
+//
+// titleFirstOnly stamps title on the first embed of the whole reply only (every
+// later embed is untitled); with it false the title repeats on every embed.
+type embedFieldScaffold struct {
+	leagueName     string
+	builtAt        time.Time
+	title          string
+	color          int
+	footer         string
+	titleFirstOnly bool
+}
+
+// embedFieldChunker packs a stream of non-inline (name, value) fields into
+// Discord embeds and embeds into messages, respecting three limits at once: at
+// most maxEmbedFields fields per embed, at most maxEmbedsPerMessage embeds per
+// message, and a per-message character budget kept clear of the hard ceiling.
+// Every embed carries the state colour bar and the scaffold's author / footer;
+// titling follows embedFieldScaffold.titleFirstOnly. Field values are expected
+// pre-truncated to maxEmbedFieldValue by the caller (as /overview does with
+// capRunes).
+//
+// It is the one field-chunking mechanism shared by /overview, /waivers and /bet
+// so the packing logic cannot drift between them. Build it with
+// newEmbedFieldChunker, feed it with add, close it with flushMessage, then read
+// messages — one []*discordgo.MessageEmbed per Discord message.
+type embedFieldChunker struct {
+	scaffold embedFieldScaffold
+	title    string // working copy; cleared after the first embed when titleFirstOnly
+
+	messages [][]*discordgo.MessageEmbed
+	msg      []*discordgo.MessageEmbed // embeds accumulated for the current message
+	cur      *discordgo.MessageEmbed   // embed accumulating fields
+	msgChars int                       // approx character total across msg + cur
+}
+
+// newEmbedFieldChunker returns a chunker that will stamp every embed from the
+// given scaffold.
+func newEmbedFieldChunker(s embedFieldScaffold) *embedFieldChunker {
+	return &embedFieldChunker{scaffold: s, title: s.title}
+}
+
+// add appends one field, opening a new embed or message first whenever this
+// field would breach a limit.
+func (c *embedFieldChunker) add(name, value string) {
+	fieldChars := utf8.RuneCountInString(name) + utf8.RuneCountInString(value)
+
+	if c.cur != nil && c.msgChars+fieldChars > embedMessageCharBudget {
+		c.flushMessage()
+	}
+	if c.cur == nil {
+		c.cur = dataEmbed(c.scaffold.leagueName, c.scaffold.builtAt, c.title, c.scaffold.color, c.scaffold.footer)
+		c.msgChars += utf8.RuneCountInString(c.title) +
+			utf8.RuneCountInString(c.scaffold.footer) +
+			utf8.RuneCountInString(c.scaffold.leagueName)
+		if c.scaffold.titleFirstOnly {
+			c.title = "" // the rest of the reply's embeds are untitled
+		}
+	}
+
+	c.cur.Fields = append(c.cur.Fields, &discordgo.MessageEmbedField{Name: name, Value: value})
+	c.msgChars += fieldChars
+
+	if len(c.cur.Fields) >= maxEmbedFields {
+		c.flushEmbed()
+		if len(c.msg) >= maxEmbedsPerMessage {
+			c.flushMessage()
+		}
+	}
+}
+
+// flushEmbed folds the in-progress embed into the current message.
+func (c *embedFieldChunker) flushEmbed() {
+	if c.cur != nil {
+		c.msg = append(c.msg, c.cur)
+		c.cur = nil
+	}
+}
+
+// flushMessage closes the current message, folding in any in-progress embed
+// first, and resets the character budget for the next one.
+func (c *embedFieldChunker) flushMessage() {
+	c.flushEmbed()
+	if len(c.msg) > 0 {
+		c.messages = append(c.messages, c.msg)
+		c.msg, c.msgChars = nil, 0
+	}
 }
