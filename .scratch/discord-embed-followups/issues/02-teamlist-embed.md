@@ -25,24 +25,42 @@ one non-inline field per position rather than a code-block table.
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `/teamlist` for a resolved manager replies with exactly one embed carrying
+- [x] `/teamlist` for a resolved manager replies with exactly one embed carrying
       four non-inline fields in `GK`, `DEF`, `MID`, `FWD` order.
-- [ ] Each field value lists that position's players via `playerLabel`, in
+- [x] Each field value lists that position's players via `playerLabel`, in
       bootstrap-static order, comma-joined; an empty position shows the `"—"`
       placeholder.
-- [ ] The embed uses the neutral colour, shows the league name on the author
+- [x] The embed uses the neutral colour, shows the league name on the author
       line (when present), is titled `"{Manager}'s squad"` with the resolved
       display name, and has a footer with the gameweek context.
-- [ ] The embed's `Timestamp` equals the snapshot's build time.
-- [ ] First-name matching and the first-seen-manager-wins tiebreak for a shared
+- [x] The embed's `Timestamp` equals the snapshot's build time.
+- [x] First-name matching and the first-seen-manager-wins tiebreak for a shared
       first name are unchanged.
-- [ ] The startup-not-ready and "no manager called X" replies are still plain
+- [x] The startup-not-ready and "no manager called X" replies are still plain
       text.
-- [ ] The `/teamlist` handler tests assert on embed structure (field count and
+- [x] The `/teamlist` handler tests assert on embed structure (field count and
       order, per-position player presence, colour, footer, `Timestamp`) rather
       than on formatted text; the tiebreak and empty-position cases are retained,
       retargeted at the embed.
-- [ ] ADR 0002 has a `/teamlist` amendment paragraph.
-- [ ] `go test ./...` is green.
+- [x] ADR 0002 has a `/teamlist` amendment paragraph.
+- [x] `go test ./...` is green.
+
+## Comments
+
+**Implemented** — `renderTeamlist` now returns `*discordgo.MessageEmbed` instead
+of `string`, built from `dataEmbed(leagueName, builtAt, "{owner}'s squad",
+colorNeutral, "GW{n}")` with four non-inline fields appended in `teamlistGroups`
+order; the empty-position placeholder moved to a `teamlistPlaceholder` const
+(`"—"`). `handleTeamlist` sends it via `RespondEmbeds`; the two short replies are
+untouched `Respond` strings. No chunker — a squad is ≤ 15 players.
+
+The shared `ownerTeamlistSnap` fixture gained `BuiltAt` / `LeagueName` /
+`CurrentGW` (additive; `/owner` and autocomplete tests unaffected).
+`teamlist_test.go` retargeted at embed structure via a new `teamlistEmbed`
+helper (mirrors `scoresEmbed`): field count/order/non-inline, per-position
+player presence, the `"—"` placeholder for Ian's empty MID/FWD, colour, author,
+footer, `Timestamp`, the shared-first-name tiebreak, and plain-text startup /
+unknown-owner paths. ADR 0002 Consequences gains a `/teamlist` amendment
+paragraph. `go test ./...` green; `gofmt` clean.

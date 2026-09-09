@@ -100,3 +100,16 @@ convention is recorded here so the fast-follow tickets (`/teamlist`, `/waivers`,
   markdown there); the field value reuses the scorer-line formatting verbatim.
   The league name moves to the footer (not the author line) for `/overview`, and
   only the first embed carries the title.
+- Amendment (`/teamlist`): like `/overview`, `/teamlist` carries no table body —
+  it renders one non-inline `field` per position in fixed `GK` → `DEF` → `MID` →
+  `FWD` order, the position label as the field name and that position's players
+  (`playerLabel`, bootstrap-static order, comma-joined) as the value, so a squad
+  reads as four labelled blocks that never wrap or side-scroll on mobile. A
+  position with no players shows a `"—"` placeholder so the full four-row shape
+  is always visible. The colour bar is `colorNeutral` — a squad has no
+  live / settled axis — with the league name on the author line, the title
+  `"{Manager}'s squad"`, a `"GW{n}"` footer and the snapshot-time `Timestamp`.
+  `renderTeamlist` returns a single `*discordgo.MessageEmbed`: one squad is at
+  most 15 players across four fields, comfortably inside every limit, so there is
+  no chunking. The startup-not-ready and "no manager called X" replies stay
+  plain text.
