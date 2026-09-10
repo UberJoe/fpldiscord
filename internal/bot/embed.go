@@ -76,6 +76,29 @@ func codeBlock(body string) string {
 	return "```\n" + body + "\n```"
 }
 
+// colWidth is the display width, in runes, of the widest of a column header and
+// its cells. Shared by every hand-rolled fixed-width table body (/standings,
+// /waivers) so a capped multi-byte cell still aligns — fmt string widths count
+// runes, not bytes.
+func colWidth(header string, cells []string) int {
+	w := utf8.RuneCountInString(header)
+	for _, c := range cells {
+		w = max(w, utf8.RuneCountInString(c))
+	}
+	return w
+}
+
+// capRunes returns s unchanged when it is at most n runes wide, otherwise its
+// first n-1 runes followed by a single-character ellipsis. It is the shared
+// mobile-width cap for a code-block column (/standings team name, /waivers owner)
+// and for an embed field value pre-truncated to maxEmbedFieldValue.
+func capRunes(s string, n int) string {
+	if utf8.RuneCountInString(s) <= n {
+		return s
+	}
+	return string([]rune(s)[:n-1]) + "…"
+}
+
 // embedMessageCharBudget is the per-message character total an embedFieldChunker
 // stops adding fields at. It sits a little below Discord's hard
 // maxMessageEmbedChars ceiling: the running count tracks field names, field

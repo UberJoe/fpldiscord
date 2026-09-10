@@ -43,30 +43,57 @@ alignment the plain-text version lacked.
 
 **Blocked by:** 01 — Extract shared `embedFieldChunker`.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `/waivers` with no `gw` still shows the latest processed round; `gw`
+- [x] `/waivers` with no `gw` still shows the latest processed round; `gw`
       selects a round; the `result` validation error is unchanged.
-- [ ] `result: accepted` replies with one embed whose description is a fenced
+- [x] `result: accepted` replies with one embed whose description is a fenced
       block containing an aligned table — owner (capped, left), the move, and the
       kind tag as distinct columns — rows in `Index` order.
-- [ ] An accepted list that would exceed the description limit keeps whole rows
+- [x] An accepted list that would exceed the description limit keeps whole rows
       under ~4000 characters and ends with a `"…and N more claims"` line.
-- [ ] `result: failed` / `all` reply with one non-inline field per contested
+- [x] `result: failed` / `all` reply with one non-inline field per contested
       player, groups in first-seen order, winner first within each group,
       `failed` dropping groups with no failed claim.
-- [ ] A `failed` / `all` round with more than 25 contested groups splits into a
+- [x] A `failed` / `all` round with more than 25 contested groups splits into a
       second embed; past ten embeds' worth it splits into a second message (a
       second responder call) — no truncation.
-- [ ] Both shapes use the neutral colour, the title `"GW{n} waivers"`, the
+- [x] Both shapes use the neutral colour, the title `"GW{n} waivers"`, the
       league name on the author line, a footer naming the `result` mode, and a
       `Timestamp` equal to the snapshot build time.
-- [ ] All the short / empty / error replies stay plain text.
-- [ ] `capRunes` / `colWidth` live with the shared embed helpers and both
+- [x] All the short / empty / error replies stay plain text.
+- [x] `capRunes` / `colWidth` live with the shared embed helpers and both
       `/standings` and `/waivers` use them.
-- [ ] `/waivers` handler tests assert on embed structure; the `result`-filter,
+- [x] `/waivers` handler tests assert on embed structure; the `result`-filter,
       group-order and winner-first cases are retained, retargeted at the embed;
       the accepted-table alignment and the overflow line are covered on the pure
       table-body helper.
-- [ ] ADR 0002 has a `/waivers` amendment paragraph.
-- [ ] `go test ./...` is green.
+- [x] ADR 0002 has a `/waivers` amendment paragraph.
+- [x] `go test ./...` is green.
+
+## Comments
+
+**Implemented** — `handleWaivers` branches on the resolved `result`:
+
+- `accepted` → `renderWaiversAccepted` returns one `*discordgo.MessageEmbed`
+  built from `dataEmbed(leagueName, builtAt, "GW{n} waivers", colorNeutral,
+  result)` with `waiverAcceptedTable(rows)` wrapped by `codeBlock` in the
+  description. `waiverAcceptedTable` is a pure string helper: three
+  space-padded columns (owner capped at `waiverOwnerCap` = 14, the `waiverMove`
+  string, the trimmed `waiverKindSuffix` tag), rows in the `Index` order
+  `LeagueTransactions` already sorts into, with a `waiverTableBudget` (4000)
+  guard that keeps whole rows and appends `"…and N more claims"`.
+- `failed` / `all` → `renderWaiversContested` feeds one non-inline field per
+  contested group (name = incoming player, value = `waiverBidLine` chain in
+  `Priority` order) through the shared `embedFieldChunker` with
+  `titleFirstOnly: true`, returning one `[]*discordgo.MessageEmbed` per message.
+  `contestedWaiverGroups` keeps the first-seen `ElementIn` order and the
+  `failed`-drops-no-failed-claim rule from the old `waiverBlocks`.
+
+`waiverBlocks` / `waiverLine` removed; `waiverBidLine` / `waiverBid` /
+`waiverMove` / `waiverKindSuffix` / `waiverName` kept. `capRunes` / `colWidth`
+moved from `standings.go` to `embed.go` next to `codeBlock`; `standings.go`
+drops its now-unused `unicode/utf8` import. `packCodeBlockMessages` and
+`maxDiscordMessage` stay put — `/bet` still uses them until ticket 04; ticket 05
+retires them. `waiverBotSnap` gained `BuiltAt` (additive). All short/empty/error
+replies stay `Respond` strings. `go test ./...` green.

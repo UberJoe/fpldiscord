@@ -113,3 +113,26 @@ convention is recorded here so the fast-follow tickets (`/teamlist`, `/waivers`,
   most 15 players across four fields, comfortably inside every limit, so there is
   no chunking. The startup-not-ready and "no manager called X" replies stay
   plain text.
+- Amendment (`/waivers`): `/waivers` renders **two shapes keyed on the `result`
+  option**. `accepted` (the default) is a flat homogeneous list, so it stays a
+  fenced code-block table in one embed's `description` — but the columns now get
+  real alignment the loose `fmt.Sprintf` version lacked: the owner (left, capped
+  at `waiverOwnerCap`, mirroring `standingsNameCap`), the roster move and the
+  claim-kind tag each in their own column, rows in `Index` order. The table body
+  is a pure string helper (`waiverAcceptedTable`) wrapped by `codeBlock`, the
+  same split as `standingsTable`; it is guarded against the 4096-character
+  description limit by keeping whole rows under ~4000 characters and appending a
+  `"…and N more claims"` line rather than chunking (a pathological free-agent
+  week only). `failed` / `all` are contested-player groups, so each contested
+  incoming player becomes one non-inline `field` — name = the incoming player,
+  value = the bid chain in `Priority` order (winner first, `waiverBidLine`
+  shape) — packed by the shared `embedFieldChunker` (now used by `/overview` and
+  `/waivers`), which spills a long round across further messages with no
+  truncation; `failed` drops a group with no failed claim. Both shapes use
+  `colorNeutral` (a processed round is settled history; `colorFinal` green is
+  reserved for "the gameweek has finished"), the title `"GW{n} waivers"`, the
+  league name on the author line, a footer naming the resolved `result` mode and
+  the snapshot-time `Timestamp`. The row-resolution logic in `internal/fpl`
+  (`LeagueTransactions`) is untouched. The startup-not-ready, "no waiver rounds
+  processed", `result`-validation, "couldn't find any waivers" and "no {result}
+  claims" replies stay plain text.
