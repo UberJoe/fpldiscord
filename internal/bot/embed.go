@@ -28,12 +28,14 @@ const (
 // gameweek never produces a reply Discord rejects. Values from the Discord
 // developer docs (see .scratch/discord-embeds/research/01-embed-presentation.md).
 //
+//   - maxEmbedFieldName    characters in one field name.
 //   - maxEmbedFieldValue   characters in one field value.
 //   - maxEmbedFields        fields per embed.
 //   - maxEmbedsPerMessage   embeds carried by one message.
 //   - maxMessageEmbedChars  combined character total across a message's embeds
 //     (Discord's hard ceiling; the /overview chunker keeps a margin below it).
 const (
+	maxEmbedFieldName    = 256
 	maxEmbedFieldValue   = 1024
 	maxEmbedFields       = 25
 	maxEmbedsPerMessage  = 10

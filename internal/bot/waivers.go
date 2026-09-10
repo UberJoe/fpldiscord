@@ -10,12 +10,6 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-// maxDiscordMessage is the ceiling a single packed code-block message is built
-// to. The hard Discord limit is 2000 characters; the headroom covers the
-// code-fence markers and the bold header on the first message. Only /bet still
-// packs this way — /waivers renders embeds — until its own migration lands.
-const maxDiscordMessage = 1900
-
 // waiverResult is the resolved `result` option: which claim set /waivers shows.
 // A named string type mirrors overview.go's overviewMode so the value is
 // validated once and compared against constants, not scattered string literals.
@@ -312,62 +306,3 @@ func waiverName(s string) string {
 	return s
 }
 
-// packCodeBlockMessages lays the blocks into as few messages as possible, each
-// a monospace code block under limit, with header prepended to the first. A
-// block is kept whole where it fits; a block larger than a whole message is
-// split on its own line boundaries rather than truncated. Still used by /bet
-// until its own embed migration; retired once that lands.
-func packCodeBlockMessages(header string, blocks []string, limit int) []string {
-	var msgs []string
-	var cur strings.Builder
-	started := false
-
-	openMsg := func() {
-		cur.Reset()
-		if !started {
-			cur.WriteString(header)
-			cur.WriteByte('\n')
-		}
-		cur.WriteString("```\n")
-	}
-	closeMsg := func() {
-		cur.WriteString("```")
-		msgs = append(msgs, cur.String())
-		started = true
-	}
-	// room reports whether adding n more characters keeps the current message
-	// (plus its closing fence) under limit.
-	room := func(n int) bool { return cur.Len()+n+len("```") <= limit }
-	bodyEmpty := func() bool { return strings.HasSuffix(cur.String(), "```\n") }
-
-	openMsg()
-	for _, blk := range blocks {
-		// Keep the block whole when it fits the current or a fresh message.
-		if room(len(blk) + 1) {
-			cur.WriteString(blk)
-			cur.WriteByte('\n')
-			continue
-		}
-		if !bodyEmpty() {
-			closeMsg()
-			openMsg()
-			if room(len(blk) + 1) {
-				cur.WriteString(blk)
-				cur.WriteByte('\n')
-				continue
-			}
-		}
-		// Block larger than a whole message: split on its line boundaries.
-		for _, ln := range strings.Split(blk, "\n") {
-			cost := len(ln) + 1
-			if !room(cost) && !bodyEmpty() {
-				closeMsg()
-				openMsg()
-			}
-			cur.WriteString(ln)
-			cur.WriteByte('\n')
-		}
-	}
-	closeMsg()
-	return msgs
-}

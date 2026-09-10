@@ -136,3 +136,28 @@ convention is recorded here so the fast-follow tickets (`/teamlist`, `/waivers`,
   (`LeagueTransactions`) is untouched. The startup-not-ready, "no waiver rounds
   processed", `result`-validation, "couldn't find any waivers" and "no {result}
   claims" replies stay plain text.
+- Amendment (`/bet`): the leaderboard is one "record with detail" per bettor, so
+  like `/teamlist` it carries no code-block table — each bettor is one non-inline
+  `field`, the heading `"{bettor}  ·  {total}  {marker}"` (status glyph plus the
+  leader tag — `(leading)` while the season runs, `🏆` once complete) and the
+  value the four `"WebName (goals)"` picks. Board order is unchanged
+  (`bet.Leaderboard`, closest-to-21, over-21 last) in both the live and archived
+  views. Fields are packed by the shared `embedFieldChunker` — now used by
+  `/overview`, `/waivers` and `/bet` — so a big league spills across further
+  messages, and the `/bet` deferred-ACK path edits the placeholder with the first
+  message and follows up with the rest. `/bet` extends the provisional / final
+  colour semantics to a **season-long** axis: `colorProvisional` +
+  `"{season} · provisional — goals can still move"` while `bet.SeasonComplete` is
+  false, `colorFinal` + `"{season} · final"` once true, with the league name on
+  the author line, the title `"Bet leaderboard — {season}"` and the snapshot-time
+  `Timestamp`. `/bet` is the first command whose field *name* carries
+  user-controlled text (the member-namer display name), so the heading is capped
+  at `maxEmbedFieldName` (256) the way the other commands cap field *values*. The archived view (`season:<past>`) uses the identical field shape
+  but is always `colorFinal`, titled `"Bet — {season} (archived)"`, footered
+  `"{season} · archived"`, and carries no `Timestamp` — no snapshot bears on a
+  frozen record. The "not configured", "still starting up", "no bets entered",
+  "no archived record" and "no seasons archived" replies stay plain text; `/bet
+  set` and `/bet archive` are untouched. With `/waivers` and `/bet` both migrated,
+  the hand-rolled `packCodeBlockMessages` string paginator has no callers and is
+  retired — the codebase now carries one field-chunking mechanism, not a second
+  string-message paginator.
