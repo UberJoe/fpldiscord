@@ -100,3 +100,64 @@ convention is recorded here so the fast-follow tickets (`/teamlist`, `/waivers`,
   markdown there); the field value reuses the scorer-line formatting verbatim.
   The league name moves to the footer (not the author line) for `/overview`, and
   only the first embed carries the title.
+- Amendment (`/teamlist`): like `/overview`, `/teamlist` carries no table body —
+  it renders one non-inline `field` per position in fixed `GK` → `DEF` → `MID` →
+  `FWD` order, the position label as the field name and that position's players
+  (`playerLabel`, bootstrap-static order, comma-joined) as the value, so a squad
+  reads as four labelled blocks that never wrap or side-scroll on mobile. A
+  position with no players shows a `"—"` placeholder so the full four-row shape
+  is always visible. The colour bar is `colorNeutral` — a squad has no
+  live / settled axis — with the league name on the author line, the title
+  `"{Manager}'s squad"`, a `"GW{n}"` footer and the snapshot-time `Timestamp`.
+  `renderTeamlist` returns a single `*discordgo.MessageEmbed`: one squad is at
+  most 15 players across four fields, comfortably inside every limit, so there is
+  no chunking. The startup-not-ready and "no manager called X" replies stay
+  plain text.
+- Amendment (`/waivers`): `/waivers` renders **two shapes keyed on the `result`
+  option**. `accepted` (the default) is a flat homogeneous list, so it stays a
+  fenced code-block table in one embed's `description` — but the columns now get
+  real alignment the loose `fmt.Sprintf` version lacked: the owner (left, capped
+  at `waiverOwnerCap`, mirroring `standingsNameCap`), the roster move and the
+  claim-kind tag each in their own column, rows in `Index` order. The table body
+  is a pure string helper (`waiverAcceptedTable`) wrapped by `codeBlock`, the
+  same split as `standingsTable`; it is guarded against the 4096-character
+  description limit by keeping whole rows under ~4000 characters and appending a
+  `"…and N more claims"` line rather than chunking (a pathological free-agent
+  week only). `failed` / `all` are contested-player groups, so each contested
+  incoming player becomes one non-inline `field` — name = the incoming player,
+  value = the bid chain in `Priority` order (winner first, `waiverBidLine`
+  shape) — packed by the shared `embedFieldChunker` (now used by `/overview` and
+  `/waivers`), which spills a long round across further messages with no
+  truncation; `failed` drops a group with no failed claim. Both shapes use
+  `colorNeutral` (a processed round is settled history; `colorFinal` green is
+  reserved for "the gameweek has finished"), the title `"GW{n} waivers"`, the
+  league name on the author line, a footer naming the resolved `result` mode and
+  the snapshot-time `Timestamp`. The row-resolution logic in `internal/fpl`
+  (`LeagueTransactions`) is untouched. The startup-not-ready, "no waiver rounds
+  processed", `result`-validation, "couldn't find any waivers" and "no {result}
+  claims" replies stay plain text.
+- Amendment (`/bet`): the leaderboard is one "record with detail" per bettor, so
+  like `/teamlist` it carries no code-block table — each bettor is one non-inline
+  `field`, the heading `"{bettor}  ·  {total}  {marker}"` (status glyph plus the
+  leader tag — `(leading)` while the season runs, `🏆` once complete) and the
+  value the four `"WebName (goals)"` picks. Board order is unchanged
+  (`bet.Leaderboard`, closest-to-21, over-21 last) in both the live and archived
+  views. Fields are packed by the shared `embedFieldChunker` — now used by
+  `/overview`, `/waivers` and `/bet` — so a big league spills across further
+  messages, and the `/bet` deferred-ACK path edits the placeholder with the first
+  message and follows up with the rest. `/bet` extends the provisional / final
+  colour semantics to a **season-long** axis: `colorProvisional` +
+  `"{season} · provisional — goals can still move"` while `bet.SeasonComplete` is
+  false, `colorFinal` + `"{season} · final"` once true, with the league name on
+  the author line, the title `"Bet leaderboard — {season}"` and the snapshot-time
+  `Timestamp`. `/bet` is the first command whose field *name* carries
+  user-controlled text (the member-namer display name), so the heading is capped
+  at `maxEmbedFieldName` (256) the way the other commands cap field *values*. The archived view (`season:<past>`) uses the identical field shape
+  but is always `colorFinal`, titled `"Bet — {season} (archived)"`, footered
+  `"{season} · archived"`, and carries no `Timestamp` — no snapshot bears on a
+  frozen record. The "not configured", "still starting up", "no bets entered",
+  "no archived record" and "no seasons archived" replies stay plain text; `/bet
+  set` and `/bet archive` are untouched. With `/waivers` and `/bet` both migrated,
+  the hand-rolled `packCodeBlockMessages` string paginator has no callers and is
+  retired — the codebase now carries one field-chunking mechanism, not a second
+  string-message paginator.
