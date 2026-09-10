@@ -238,7 +238,7 @@ func TestHandleWaivers_SameNamedPlayersDoNotMergeIntoOneField(t *testing.T) {
 
 func TestRenderWaiversContested_SplitsPastTwentyFiveGroupsIntoASecondEmbed(t *testing.T) {
 	groups := manyContestedGroups(26)
-	msgs := renderWaiversContested("FPL Draft 26/27", waiverSnapBuiltAt, 4, "all", groups)
+	msgs := renderWaiversContested("FPL Draft 26/27", waiverSnapBuiltAt, 4, waiverAll, groups)
 
 	if len(msgs) != 1 {
 		t.Fatalf("messages = %d, want the 26 groups to still fit one message", len(msgs))
@@ -257,7 +257,7 @@ func TestRenderWaiversContested_SplitsPastTwentyFiveGroupsIntoASecondEmbed(t *te
 
 func TestRenderWaiversContested_SplitsPastTenEmbedsIntoASecondMessage(t *testing.T) {
 	groups := manyContestedGroups(251)
-	msgs := renderWaiversContested("FPL Draft 26/27", waiverSnapBuiltAt, 4, "all", groups)
+	msgs := renderWaiversContested("FPL Draft 26/27", waiverSnapBuiltAt, 4, waiverAll, groups)
 
 	if len(msgs) < 2 {
 		t.Fatalf("messages = %d, want 251 groups to spill past one message", len(msgs))

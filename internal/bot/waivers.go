@@ -16,16 +16,27 @@ import (
 // packs this way — /waivers renders embeds — until its own migration lands.
 const maxDiscordMessage = 1900
 
+// waiverResult is the resolved `result` option: which claim set /waivers shows.
+// A named string type mirrors overview.go's overviewMode so the value is
+// validated once and compared against constants, not scattered string literals.
+type waiverResult string
+
+const (
+	waiverAccepted waiverResult = "accepted" // the default: the flat accepted-claims table
+	waiverFailed   waiverResult = "failed"   // contested groups with at least one failed claim
+	waiverAll      waiverResult = "all"      // every contested group
+)
+
 // waiverOwnerCap bounds the owner column of the accepted-claims table, mirroring
 // standingsNameCap: an owner first name then stays inside the ~30–34 characters a
 // Discord mobile client shows before it wraps or side-scrolls.
 const waiverOwnerCap = 14
 
-// waiverTableBudget is the character ceiling for the accepted-claims table body.
-// It sits under Discord's 4096-character description limit (the code fence adds a
-// handful more) with margin to spare. A pathological free-agent week whose table
-// would exceed it keeps as many whole rows as fit and appends a summary line
-// rather than overflowing — the same call /standings makes for its table.
+// waiverTableBudget is the byte ceiling for the accepted-claims table body. It
+// sits well under Discord's 4096-character description limit (bytes >= runes, and
+// the code fence adds a handful more) with margin to spare. A pathological
+// free-agent week whose table would exceed it keeps as many whole rows as fit
+// and appends a summary line rather than overflowing.
 const waiverTableBudget = 4000
 
 // handleWaivers renders a processed waiver round as one or more framed embeds.
@@ -62,14 +73,18 @@ func handleWaivers(in *cmdInput) error {
 		gw = processed[len(processed)-1]
 	}
 
-	result := "accepted"
+	result := waiverAccepted
 	if v, ok := in.opts.String("result"); ok {
-		result = strings.ToLower(strings.TrimSpace(v))
-	}
-	switch result {
-	case "accepted", "failed", "all":
-	default:
-		return in.resp.Respond(`The "result" option must be accepted, failed or all.`)
+		switch waiverResult(strings.ToLower(strings.TrimSpace(v))) {
+		case waiverAccepted:
+			result = waiverAccepted
+		case waiverFailed:
+			result = waiverFailed
+		case waiverAll:
+			result = waiverAll
+		default:
+			return in.resp.Respond(`The "result" option must be accepted, failed or all.`)
+		}
 	}
 
 	rows := snap.LeagueTransactions(gw)
@@ -77,10 +92,14 @@ func handleWaivers(in *cmdInput) error {
 		return in.resp.Respond(fmt.Sprintf("Couldn't find any waivers for GW%d.", gw))
 	}
 
-	if result == "accepted" {
+	noClaims := func() error {
+		return in.resp.Respond(fmt.Sprintf("No %s waiver claims in GW%d.", result, gw))
+	}
+
+	if result == waiverAccepted {
 		accepted := acceptedWaiverRows(rows)
 		if len(accepted) == 0 {
-			return in.resp.Respond(fmt.Sprintf("No %s waiver claims in GW%d.", result, gw))
+			return noClaims()
 		}
 		e := renderWaiversAccepted(snap.LeagueName, snap.BuiltAt, gw, result, accepted)
 		return in.resp.RespondEmbeds([]*discordgo.MessageEmbed{e})
@@ -88,7 +107,7 @@ func handleWaivers(in *cmdInput) error {
 
 	groups := contestedWaiverGroups(result, rows)
 	if len(groups) == 0 {
-		return in.resp.Respond(fmt.Sprintf("No %s waiver claims in GW%d.", result, gw))
+		return noClaims()
 	}
 	for _, embeds := range renderWaiversContested(snap.LeagueName, snap.BuiltAt, gw, result, groups) {
 		if err := in.resp.RespondEmbeds(embeds); err != nil {
@@ -115,7 +134,7 @@ func acceptedWaiverRows(rows []fpl.WaiverRow) []fpl.WaiverRow {
 // first-seen ElementIn order. Each group is sorted into Priority order so the
 // winner leads the out-bid chain. In failed mode a group with no failed claim is
 // dropped; all mode keeps every group.
-func contestedWaiverGroups(result string, rows []fpl.WaiverRow) [][]fpl.WaiverRow {
+func contestedWaiverGroups(result waiverResult, rows []fpl.WaiverRow) [][]fpl.WaiverRow {
 	var order []fpl.ElementID
 	groups := map[fpl.ElementID][]fpl.WaiverRow{}
 	for _, r := range rows {
@@ -130,7 +149,7 @@ func contestedWaiverGroups(result string, rows []fpl.WaiverRow) [][]fpl.WaiverRo
 		g := groups[elem]
 		sort.SliceStable(g, func(i, j int) bool { return g[i].Priority < g[j].Priority })
 
-		if result == "failed" {
+		if result == waiverFailed {
 			failed := false
 			for _, r := range g {
 				if r.Status == fpl.WaiverStatusFailed {
@@ -150,13 +169,13 @@ func contestedWaiverGroups(result string, rows []fpl.WaiverRow) [][]fpl.WaiverRo
 // scaffold: league name on the author line, colorNeutral bar, the resolved
 // result mode as the footer, the snapshot build time as the Timestamp, and the
 // aligned table as a fenced code block in the description.
-func renderWaiversAccepted(leagueName string, builtAt time.Time, gw int, result string, rows []fpl.WaiverRow) *discordgo.MessageEmbed {
+func renderWaiversAccepted(leagueName string, builtAt time.Time, gw int, result waiverResult, rows []fpl.WaiverRow) *discordgo.MessageEmbed {
 	e := dataEmbed(
 		leagueName,
 		builtAt,
 		fmt.Sprintf("GW%d waivers", gw),
 		colorNeutral,
-		result,
+		string(result),
 	)
 	e.Description = codeBlock(waiverAcceptedTable(rows))
 	return e
@@ -221,13 +240,13 @@ func waiverAcceptedTable(rows []fpl.WaiverRow) string {
 // in the footer, snapshot-time Timestamp), titles only the first embed, and
 // spills a long round across further messages exactly as /overview does. The
 // return is one []*discordgo.MessageEmbed per Discord message.
-func renderWaiversContested(leagueName string, builtAt time.Time, gw int, result string, groups [][]fpl.WaiverRow) [][]*discordgo.MessageEmbed {
+func renderWaiversContested(leagueName string, builtAt time.Time, gw int, result waiverResult, groups [][]fpl.WaiverRow) [][]*discordgo.MessageEmbed {
 	c := newEmbedFieldChunker(embedFieldScaffold{
 		leagueName:     leagueName,
 		builtAt:        builtAt,
 		title:          fmt.Sprintf("GW%d waivers", gw),
 		color:          colorNeutral,
-		footer:         result,
+		footer:         string(result),
 		titleFirstOnly: true,
 	})
 	for _, g := range groups {
