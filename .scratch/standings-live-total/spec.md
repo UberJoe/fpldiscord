@@ -15,8 +15,10 @@ and never renders it — it paints `totalPoints` (frozen) instead.
 ## Agreed design
 
 Scope: **web Standings list view only** (`web/src/views/Standings.tsx`). Discord
-`/standings` is unaffected — it uses a different code path and doesn't have this
-problem. The manager drill-down is untouched.
+`/standings` used a different code path and didn't have this problem at the time
+— ticket 02 later brought it onto the same live total and arrow (see
+`issues/02-discord-standings-live-total.md`). The manager drill-down is
+untouched.
 
 Frontend-only. `livePoints` is already on the wire; `totalPoints` stays in the
 payload, just unrendered. No Go, API, or sort/arrow change.
@@ -59,5 +61,6 @@ New glossary terms in [CONTEXT.md](../../CONTEXT.md): *live total*, *frozen tota
 
 - No ADR — the column choice is a low-stakes, reversible display tweak.
 - No web test infrastructure — its own decision if wanted, not riding in on this.
-- No change to Discord `/standings`, the manager drill-down, or the `/api/*`
-  surface.
+- No change to Discord `/standings` *in this ticket* (see ticket 02, which
+  brings it onto the live total and arrow), the manager drill-down, or the
+  `/api/*` surface.

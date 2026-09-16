@@ -51,5 +51,7 @@ mid-season entrant) shows a flat arrow.
 - The `officialRank` field is no longer used to compute the arrow. It stays on
   the `/api/standings` payload for now (the web view does not render it) and can
   be removed later if nothing else needs it.
-- Discord `/standings` is unaffected — it never had a movement arrow and passes
-  the Draft rank through directly.
+- Discord `/standings` originally had no movement arrow and passed the Draft
+  rank through directly; ticket `standings-live-total`/02 brought it onto the
+  same live rank / arrow this ADR defines, so both surfaces now share one
+  meaning for "movement."
