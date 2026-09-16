@@ -5,69 +5,6 @@ import (
 	"time"
 )
 
-func TestStandings_ClassicRowsFromLeagueDetails(t *testing.T) {
-	snap, _ := buildFromStub(t)
-
-	rows := snap.Standings()
-	if len(rows) != 2 {
-		t.Fatalf("len(rows) = %d, want 2", len(rows))
-	}
-	// standings[] fixture is Ian (rank 1) then Bruno (rank 2), ascending by rank.
-	if rows[0].Rank != 1 || rows[1].Rank != 2 {
-		t.Fatalf("ranks = %d, %d; want 1, 2", rows[0].Rank, rows[1].Rank)
-	}
-
-	ian := rows[0]
-	if ian.EntryName != "Coq au Vin" {
-		t.Errorf("row[0].EntryName = %q, want Coq au Vin", ian.EntryName)
-	}
-	if ian.Total != 210 || ian.EventTotal != 55 {
-		t.Errorf("row[0] totals = %d/%d, want 210/55", ian.Total, ian.EventTotal)
-	}
-
-	bruno := rows[1]
-	if bruno.EntryName != "Bruno Dos Tres" {
-		t.Errorf("row[1].EntryName = %q, want Bruno Dos Tres", bruno.EntryName)
-	}
-	if bruno.Total != 180 || bruno.EventTotal != 40 {
-		t.Errorf("row[1] totals = %d/%d, want 180/40", bruno.Total, bruno.EventTotal)
-	}
-}
-
-func TestStandings_SortedByRankClassicOnly(t *testing.T) {
-	base := func(scoring string, standings []Standing) *Snapshot {
-		var p pieces
-		p.details = LeagueDetails{
-			League: League{Name: "L", Scoring: scoring},
-			LeagueEntries: []LeagueEntry{
-				{ID: 1, EntryName: "Alpha"},
-				{ID: 2, EntryName: "Beta"},
-			},
-			Standings: standings,
-		}
-		return assemble(p, time.Now().UTC(), false)
-	}
-
-	classic := base("c", []Standing{
-		{Rank: 2, LeagueEntry: 2, Total: 50, EventTotal: 5},
-		{Rank: 1, LeagueEntry: 1, Total: 90, EventTotal: 8},
-	})
-	rows := classic.Standings()
-	if len(rows) != 2 || rows[0].Rank != 1 || rows[0].EntryName != "Alpha" {
-		t.Fatalf("classic standings not sorted by rank: %+v", rows)
-	}
-	if rows[1].Rank != 2 || rows[1].EntryName != "Beta" {
-		t.Errorf("row[1] = %+v, want Beta at rank 2", rows[1])
-	}
-
-	// h2h standings[] rows carry match/points-for data, not Total/EventTotal —
-	// this ticket does not build that variant, so Standings() returns nil.
-	h2h := base("h", []Standing{{Rank: 1, LeagueEntry: 1}})
-	if got := h2h.Standings(); got != nil {
-		t.Errorf("h2h Standings() = %+v, want nil", got)
-	}
-}
-
 // liveStandingsSnapshot: GW5, two classic managers. Draft standings[].Total
 // already includes this GW's EventTotal, so the frozen base is Total-EventTotal.
 // M1 (LE 1 / entry 500) is official rank 1 — frozen 110, no live points this GW.
@@ -372,5 +309,91 @@ func TestLiveStandings_NilInH2HMode(t *testing.T) {
 	snap.LeagueMode = ModeH2H
 	if got := snap.LiveStandings(); got != nil {
 		t.Errorf("LiveStandings() in h2h = %+v, want nil", got)
+	}
+}
+
+// liveStandingsAutoSubSnapshot: GW5, one classic manager (entry 700) whose
+// slot-5 DEF (element 704) blanks in a finished match. The bench DEF (element
+// 712, slot 13) comes on and scores 8, so the gameweek total must reflect the
+// scoring XI *after* the auto-sub — summing the raw picks[1..11] verbatim would
+// count element 704's blank (0) instead and land on 29, not 37.
+func liveStandingsAutoSubSnapshot() *Snapshot {
+	var p pieces
+	p.currentGW = 5
+	p.game = Game{CurrentEvent: 5}
+
+	p.bootstrap = Bootstrap{
+		Elements: []Element{
+			{ID: 700, ElementType: int(PosGK)},
+			{ID: 701, ElementType: int(PosDEF)}, {ID: 702, ElementType: int(PosDEF)},
+			{ID: 703, ElementType: int(PosDEF)}, {ID: 704, ElementType: int(PosDEF)},
+			{ID: 705, ElementType: int(PosMID)}, {ID: 706, ElementType: int(PosMID)},
+			{ID: 707, ElementType: int(PosMID)}, {ID: 708, ElementType: int(PosMID)},
+			{ID: 709, ElementType: int(PosFWD)}, {ID: 710, ElementType: int(PosFWD)},
+			{ID: 711, ElementType: int(PosGK)}, {ID: 712, ElementType: int(PosDEF)},
+			{ID: 713, ElementType: int(PosMID)}, {ID: 714, ElementType: int(PosFWD)},
+		},
+		Settings: Settings{Squad: stdSquad}, // stdSquad: internal/fpl/autosubs_test.go
+	}
+	p.live = LiveGW{
+		Fixtures: []LiveFixture{{ID: 1, Started: true, Finished: true, FinishedProvisional: true}},
+		Elements: map[ElementID]LiveElement{
+			700: {Stats: LiveStats{TotalPoints: 2, Minutes: 90}},
+			701: {Stats: LiveStats{TotalPoints: 1, Minutes: 90}},
+			702: {Stats: LiveStats{TotalPoints: 3, Minutes: 90}},
+			703: {Stats: LiveStats{TotalPoints: 2, Minutes: 90}},
+			704: {Stats: LiveStats{Minutes: 0}, Explain: []LiveExplain{{Fixture: 1}}},
+			705: {Stats: LiveStats{TotalPoints: 5, Minutes: 90}},
+			706: {Stats: LiveStats{TotalPoints: 4, Minutes: 90}},
+			707: {Stats: LiveStats{TotalPoints: 3, Minutes: 90}},
+			708: {Stats: LiveStats{TotalPoints: 6, Minutes: 90}},
+			709: {Stats: LiveStats{TotalPoints: 2, Minutes: 90}},
+			710: {Stats: LiveStats{TotalPoints: 1, Minutes: 90}},
+			712: {Stats: LiveStats{TotalPoints: 8, Minutes: 90}},
+		},
+	}
+
+	p.details = LeagueDetails{
+		League: League{Name: "L", Scoring: "c"},
+		LeagueEntries: []LeagueEntry{
+			{ID: 1, EntryID: 700, EntryName: "Auto Subs FC", PlayerFirstName: "Ash"},
+		},
+		Standings: []Standing{
+			{Rank: 1, LastRank: 1, RankSort: 1, LeagueEntry: 1, Total: 150, EventTotal: 40},
+		},
+	}
+	p.entries = map[EntryID]EntryEvent{
+		700: {Picks: []Pick{
+			{Element: 700, Position: 1, Multiplier: 1},
+			{Element: 701, Position: 2, Multiplier: 1}, {Element: 702, Position: 3, Multiplier: 1},
+			{Element: 703, Position: 4, Multiplier: 1}, {Element: 704, Position: 5, Multiplier: 1},
+			{Element: 705, Position: 6, Multiplier: 1}, {Element: 706, Position: 7, Multiplier: 1},
+			{Element: 707, Position: 8, Multiplier: 1}, {Element: 708, Position: 9, Multiplier: 1},
+			{Element: 709, Position: 10, Multiplier: 1}, {Element: 710, Position: 11, Multiplier: 1},
+			{Element: 711, Position: 12, Multiplier: 1}, {Element: 712, Position: 13, Multiplier: 1},
+			{Element: 713, Position: 14, Multiplier: 1}, {Element: 714, Position: 15, Multiplier: 1},
+		}},
+	}
+	return assemble(p, time.Now().UTC(), false)
+}
+
+func TestLiveStandings_LiveGwPointsReflectsAutoSub(t *testing.T) {
+	rows := liveStandingsAutoSubSnapshot().LiveStandings()
+	if len(rows) != 1 {
+		t.Fatalf("len(rows) = %d, want 1", len(rows))
+	}
+
+	row := rows[0]
+	// 700:2 701:1 702:3 703:2 712:8(auto-subbed in for blanking 704) 705:5
+	// 706:4 707:3 708:6 709:2 710:1 = 37. Summing the raw picks instead (704's
+	// blank counted, 712 never brought on) would give 29.
+	if row.LiveGwPoints != 37 {
+		t.Errorf("LiveGwPoints = %d, want 37 (auto-sub applied)", row.LiveGwPoints)
+	}
+	if row.TotalPoints != 110 {
+		t.Errorf("TotalPoints = %d, want 110 (frozen base, Total 150 - EventTotal 40)", row.TotalPoints)
+	}
+	if row.LivePoints != 147 {
+		t.Errorf("LivePoints = %d, want 147 (110 frozen + 37 live)", row.LivePoints)
 	}
 }

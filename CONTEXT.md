@@ -31,7 +31,8 @@ auto-subs only once the gameweek finishes). Not the same as the [[live-total]].
 _Avoid_: Draft total
 
 **Movement arrow**:
-The ▲ / ▼ / – indicator beside a manager on the web Standings table. Shows places
+The ▲ / ▼ / – indicator beside a manager on the web Standings table and Discord's
+`/standings` table. Shows places
 gained or lost since **last week's final standings**: the Draft `last_rank` on
 the standings row minus the manager's current [[live-total]] rank (positive is a
 climb). It is fixed for the duration of a gameweek in progress — `last_rank` is
