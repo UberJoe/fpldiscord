@@ -148,22 +148,3 @@ func arrowCell(n int) string {
 		return "–"
 	}
 }
-
-// colWidth is the display width, in runes, of the widest of a column header and
-// its cells.
-func colWidth(header string, cells []string) int {
-	w := utf8.RuneCountInString(header)
-	for _, c := range cells {
-		w = max(w, utf8.RuneCountInString(c))
-	}
-	return w
-}
-
-// capRunes returns s unchanged when it is at most n runes wide, otherwise its
-// first n-1 runes followed by a single-character ellipsis.
-func capRunes(s string, n int) string {
-	if utf8.RuneCountInString(s) <= n {
-		return s
-	}
-	return string([]rune(s)[:n-1]) + "…"
-}
