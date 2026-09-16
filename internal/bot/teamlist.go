@@ -3,8 +3,10 @@ package bot
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/UberJoe/fpldiscord/internal/fpl"
+	"github.com/bwmarrin/discordgo"
 )
 
 // handleTeamlist lists a manager's whole squad grouped GK / DEF / MID / FWD.
@@ -44,7 +46,8 @@ func handleTeamlist(in *cmdInput) error {
 	if len(squad) == 0 {
 		return in.resp.Respond(fmt.Sprintf("No manager called %q, or they own no players.", owner))
 	}
-	return in.resp.Respond(renderTeamlist(display, squad))
+	e := renderTeamlist(in.snap.LeagueName, in.snap.BuiltAt, in.snap.CurrentGW, display, squad)
+	return in.resp.RespondEmbeds([]*discordgo.MessageEmbed{e})
 }
 
 // teamlistGroups is the fixed GK → DEF → MID → FWD order the squad is laid out
@@ -59,26 +62,41 @@ var teamlistGroups = []struct {
 	{"FWD", fpl.PosFWD},
 }
 
-// renderTeamlist prints one line per position — "LABEL  Name (CLUB), …" in
-// bootstrap-static order within the group — inside a monospace block. A
-// position with no players shows "—" so the full squad shape is visible. One
-// manager's squad is at most 15 players, so the output never needs splitting
-// across messages.
-func renderTeamlist(owner string, squad []fpl.TeamPlayer) string {
+// teamlistPlaceholder fills a position with no players so the full four-row
+// squad shape is always visible in the embed.
+const teamlistPlaceholder = "—"
+
+// renderTeamlist frames a manager's squad as one embed built on the shared
+// scaffold: the league name on the author line (when the snapshot has one), a
+// neutral colour bar (a squad carries no live / settled axis), a "GW{n}" footer
+// and the snapshot build time as the Timestamp. The squad is laid out as four
+// non-inline fields in fixed GK → DEF → MID → FWD order — one labelled block per
+// position — so nothing wraps or side-scrolls on mobile.
+//
+// Each field value is that position's players in bootstrap-static order, each
+// formatted by playerLabel (web name + club short name) and joined by ", "; a
+// position with no players shows teamlistPlaceholder so all four rows are always
+// visible. One manager's squad is at most 15 players across four fields,
+// comfortably inside every embed limit, so there is nothing to chunk.
+func renderTeamlist(leagueName string, builtAt time.Time, gw int, owner string, squad []fpl.TeamPlayer) *discordgo.MessageEmbed {
 	byPos := map[fpl.Pos][]string{}
 	for _, p := range squad {
 		byPos[p.Pos] = append(byPos[p.Pos], playerLabel(p))
 	}
 
-	var b strings.Builder
-	fmt.Fprintf(&b, "**%s's squad**\n```\n", owner)
+	e := dataEmbed(
+		leagueName,
+		builtAt,
+		fmt.Sprintf("%s's squad", owner),
+		colorNeutral,
+		fmt.Sprintf("GW%d", gw),
+	)
 	for _, g := range teamlistGroups {
-		names := "—"
+		names := teamlistPlaceholder
 		if len(byPos[g.pos]) > 0 {
 			names = strings.Join(byPos[g.pos], ", ")
 		}
-		fmt.Fprintf(&b, "%-4s %s\n", g.label, names)
+		e.Fields = append(e.Fields, &discordgo.MessageEmbedField{Name: g.label, Value: names})
 	}
-	b.WriteString("```")
-	return b.String()
+	return e
 }

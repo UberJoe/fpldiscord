@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/UberJoe/fpldiscord/internal/fpl"
 	"github.com/bwmarrin/discordgo"

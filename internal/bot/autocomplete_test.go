@@ -3,10 +3,15 @@ package bot
 import (
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/UberJoe/fpldiscord/internal/fpl"
 	"github.com/bwmarrin/discordgo"
 )
+
+// teamlistSnapBuiltAt is the build time ownerTeamlistSnap carries, so the
+// /teamlist embed's Timestamp is deterministic.
+var teamlistSnapBuiltAt = time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 
 // ownerTeamlistSnap is the shared seam-4 fixture for /owner, /teamlist and
 // their autocomplete: five players across two clubs, owned by Bruno / Ian /
@@ -16,6 +21,9 @@ func ownerTeamlistSnap() *fpl.Snapshot {
 	bruno := fpl.EntryID(39880)
 	ian := fpl.EntryID(89)
 	return &fpl.Snapshot{
+		BuiltAt:    teamlistSnapBuiltAt,
+		LeagueName: "Coq au Ian",
+		CurrentGW:  7,
 		Bootstrap: fpl.Bootstrap{
 			Elements: []fpl.Element{
 				{ID: 11, WebName: "Højlund", ElementType: int(fpl.PosFWD), Team: 1},

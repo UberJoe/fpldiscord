@@ -1,8 +1,10 @@
 package bot
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/UberJoe/fpldiscord/internal/fpl"
 	"github.com/UberJoe/fpldiscord/internal/store"
@@ -53,6 +55,11 @@ func (f fakeNamer) MemberName(id string) (string, bool) {
 	return n, ok
 }
 
+// betSnapBuiltAt is the build time betBotSnap carries, so a test can assert the
+// live-board embed Timestamp is the snapshot build time (and the archived view
+// carries none).
+var betSnapBuiltAt = time.Date(2026, 9, 10, 8, 0, 0, 0, time.UTC)
+
 // betBotSnap is a snapshot with ten players (fixed season goals) and the
 // matching autocomplete slice, enough to drive the bet leaderboard and the
 // name->id resolution in /bet set.
@@ -77,10 +84,41 @@ func betBotSnap() *fpl.Snapshot {
 		LeagueName:  "FPL Draft",
 		LeagueMode:  fpl.ModeClassic,
 		CurrentGW:   5,
+		BuiltAt:     betSnapBuiltAt,
 		Game:        fpl.Game{CurrentEvent: 5},
 		Bootstrap:   fpl.Bootstrap{Elements: els},
 		PlayerNames: pn,
 	}
+}
+
+// betEmbeds runs handleBet against a recordingResponder and returns the
+// per-message embed slices it emitted, failing if the handler sent any
+// plain-text message or nothing at all.
+func betEmbeds(t *testing.T, in *cmdInput) [][]*discordgo.MessageEmbed {
+	t.Helper()
+	r := &recordingResponder{}
+	in.resp = r
+	if err := handleBet(in); err != nil {
+		t.Fatalf("handleBet: %v", err)
+	}
+	if len(r.messages) != 0 {
+		t.Fatalf("plain messages = %v, want none — this /bet reply is an embed", r.messages)
+	}
+	if len(r.embeds) == 0 {
+		t.Fatalf("handler emitted no embed messages")
+	}
+	return r.embeds
+}
+
+// betOneEmbed asserts the handler emitted exactly one message carrying one
+// embed and returns it.
+func betOneEmbed(t *testing.T, in *cmdInput) *discordgo.MessageEmbed {
+	t.Helper()
+	msgs := betEmbeds(t, in)
+	if len(msgs) != 1 || len(msgs[0]) != 1 {
+		t.Fatalf("embeds = %v, want exactly one message carrying one embed", msgs)
+	}
+	return msgs[0][0]
 }
 
 func liveBetPicks() []store.BettorPicks {
@@ -98,37 +136,64 @@ func betNamer() fakeNamer {
 // --- /bet show (live) -----------------------------------------------------
 
 func TestHandleBet_ShowLiveRendersStatusesAndLeader(t *testing.T) {
-	r := &recordingResponder{}
-	in := &cmdInput{
+	e := betOneEmbed(t, &cmdInput{
 		snap:     betBotSnap(),
 		opts:     cmdOptions{},
 		sub:      "show",
-		resp:     r,
 		betStore: &fakeBetStore{current: liveBetPicks()},
 		season:   "2026/27",
 		isAdmin:  func(string) bool { return false },
 		namer:    betNamer(),
-	}
-	if err := handleBet(in); err != nil {
-		t.Fatalf("handleBet: %v", err)
-	}
-	if len(r.messages) != 1 {
-		t.Fatalf("messages = %d, want 1", len(r.messages))
-	}
-	msg := r.messages[0]
+	})
 
-	for _, want := range []string{"2026/27", "Alice", "Bob", "Carol", "Alpha (5)", "Juliet (0)", "🕓", "💥", "(leading)"} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("rendered board missing %q:\n%s", want, msg)
+	if e.Title != "Bet leaderboard — 2026/27" {
+		t.Errorf("title = %q, want %q", e.Title, "Bet leaderboard — 2026/27")
+	}
+	if e.Author == nil || e.Author.Name != "FPL Draft" {
+		t.Errorf("author = %+v, want the league name", e.Author)
+	}
+	if want := betSnapBuiltAt.Format(time.RFC3339); e.Timestamp != want {
+		t.Errorf("timestamp = %q, want the snapshot build time %q", e.Timestamp, want)
+	}
+	// One non-inline field per bettor.
+	if len(e.Fields) != 3 {
+		t.Fatalf("fields = %d, want one per bettor (3)", len(e.Fields))
+	}
+	for _, f := range e.Fields {
+		if f.Inline {
+			t.Errorf("bettor field %q is inline, want a full-width block", f.Name)
+		}
+	}
+
+	body := allEmbedFields([][]*discordgo.MessageEmbed{{e}})
+	for _, want := range []string{"Alice", "Bob", "Carol", "Alpha (5)", "Juliet (0)", "🕓", "💥", "(leading)"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("rendered board missing %q:\n%s", want, body)
 		}
 	}
 	// Not settled yet, so no trophy.
-	if strings.Contains(msg, "🏆") {
-		t.Errorf("trophy shown before season complete:\n%s", msg)
+	if strings.Contains(body, "🏆") {
+		t.Errorf("trophy shown before season complete:\n%s", body)
 	}
-	// Order: Alice (20) before Carol (16) before Bob (bust).
-	if !(strings.Index(msg, "Alice") < strings.Index(msg, "Carol") && strings.Index(msg, "Carol") < strings.Index(msg, "Bob")) {
-		t.Errorf("rows not closest-to-21 with bust last:\n%s", msg)
+	// Field order: Alice (20) before Carol (16) before Bob (bust).
+	if !(strings.Index(body, "Alice") < strings.Index(body, "Carol") && strings.Index(body, "Carol") < strings.Index(body, "Bob")) {
+		t.Errorf("rows not closest-to-21 with bust last:\n%s", body)
+	}
+}
+
+func TestHandleBet_ShowLiveColourAndFooterAreProvisionalWhileSeasonRuns(t *testing.T) {
+	e := betOneEmbed(t, &cmdInput{
+		snap: betBotSnap(), opts: cmdOptions{}, sub: "show",
+		betStore: &fakeBetStore{current: liveBetPicks()},
+		season:   "2026/27",
+		isAdmin:  func(string) bool { return false },
+		namer:    betNamer(),
+	})
+	if e.Color != colorProvisional {
+		t.Errorf("color = %#x, want provisional %#x while the season runs", e.Color, colorProvisional)
+	}
+	if e.Footer == nil || !strings.Contains(e.Footer.Text, "2026/27") || !strings.Contains(e.Footer.Text, "provisional") {
+		t.Errorf("footer = %+v, want the season and the provisional phase", e.Footer)
 	}
 }
 
@@ -136,20 +201,22 @@ func TestHandleBet_ShowStampsTrophyOnceSeasonComplete(t *testing.T) {
 	snap := betBotSnap()
 	snap.Game = fpl.Game{CurrentEvent: 38, CurrentEventFinished: true}
 
-	r := &recordingResponder{}
-	in := &cmdInput{
-		snap: snap, opts: cmdOptions{}, sub: "show", resp: r,
+	e := betOneEmbed(t, &cmdInput{
+		snap: snap, opts: cmdOptions{}, sub: "show",
 		betStore: &fakeBetStore{current: liveBetPicks()},
 		season:   "2026/27",
 		isAdmin:  func(string) bool { return false },
 		namer:    betNamer(),
+	})
+	body := allEmbedFields([][]*discordgo.MessageEmbed{{e}})
+	if !strings.Contains(body, "🏆") || strings.Contains(body, "(leading)") {
+		t.Errorf("want trophy, not (leading), once complete:\n%s", body)
 	}
-	if err := handleBet(in); err != nil {
-		t.Fatalf("handleBet: %v", err)
+	if e.Color != colorFinal {
+		t.Errorf("color = %#x, want final %#x once complete", e.Color, colorFinal)
 	}
-	msg := r.messages[0]
-	if !strings.Contains(msg, "🏆") || strings.Contains(msg, "(leading)") {
-		t.Errorf("want trophy, not (leading), once complete:\n%s", msg)
+	if e.Footer == nil || e.Footer.Text != "2026/27 · final" {
+		t.Errorf("footer = %+v, want %q", e.Footer, "2026/27 · final")
 	}
 }
 
@@ -163,6 +230,9 @@ func TestHandleBet_ShowNoPicksExplains(t *testing.T) {
 	}
 	if err := handleBet(in); err != nil {
 		t.Fatalf("handleBet: %v", err)
+	}
+	if len(r.embeds) != 0 {
+		t.Fatalf("emitted an embed, want plain text only: %v", r.embeds)
 	}
 	if len(r.messages) != 1 || !strings.Contains(r.messages[0], "/bet set") {
 		t.Errorf("empty-board reply = %v", r.messages)
@@ -178,6 +248,9 @@ func TestHandleBet_ShowNoSnapshotReportsStartingUp(t *testing.T) {
 	}
 	if err := handleBet(in); err != nil {
 		t.Fatalf("handleBet: %v", err)
+	}
+	if len(r.embeds) != 0 {
+		t.Fatalf("emitted an embed, want plain text only: %v", r.embeds)
 	}
 	if len(r.messages) != 1 || !strings.Contains(strings.ToLower(r.messages[0]), "starting up") {
 		t.Errorf("no-snapshot reply = %v", r.messages)
@@ -198,19 +271,62 @@ func TestHandleBet_ShowArchivedSeasonIsStatic(t *testing.T) {
 			},
 		},
 	}
-	r := &recordingResponder{}
-	in := &cmdInput{
-		snap: betBotSnap(), opts: cmdOptions{"season": "2025/26"}, sub: "show", resp: r,
+	e := betOneEmbed(t, &cmdInput{
+		snap: betBotSnap(), opts: cmdOptions{"season": "2025/26"}, sub: "show",
 		betStore: fbs, season: "2026/27",
+	})
+
+	if e.Title != "Bet — 2025/26 (archived)" {
+		t.Errorf("title = %q, want %q", e.Title, "Bet — 2025/26 (archived)")
 	}
-	if err := handleBet(in); err != nil {
-		t.Fatalf("handleBet: %v", err)
+	if e.Color != colorFinal {
+		t.Errorf("color = %#x, want final %#x — a frozen record", e.Color, colorFinal)
 	}
-	msg := r.messages[0]
-	for _, want := range []string{"2025/26", "archived", "Zoe", "Salah (5)", "20"} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("archived view missing %q:\n%s", want, msg)
+	if e.Footer == nil || e.Footer.Text != "2025/26 · archived" {
+		t.Errorf("footer = %+v, want %q", e.Footer, "2025/26 · archived")
+	}
+	if e.Timestamp != "" {
+		t.Errorf("timestamp = %q, want none — no snapshot bears on a frozen record", e.Timestamp)
+	}
+	body := allEmbedFields([][]*discordgo.MessageEmbed{{e}})
+	for _, want := range []string{"Zoe", "Salah (5)", "20"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("archived view missing %q:\n%s", want, body)
 		}
+	}
+}
+
+func TestHandleBet_ShowArchivedKeepsClosestTo21WithBustLast(t *testing.T) {
+	fbs := &fakeBetStore{
+		archives: map[string][]store.ArchivedBettor{
+			"2025/26": {
+				{Name: "Busty", Picks: [4]store.ArchivePick{
+					{PlayerName: "A", FinalGoals: 10}, {PlayerName: "B", FinalGoals: 10},
+					{PlayerName: "C", FinalGoals: 10}, {PlayerName: "D", FinalGoals: 10}, // 40 -> bust
+				}},
+				{Name: "Faraway", Picks: [4]store.ArchivePick{
+					{PlayerName: "A", FinalGoals: 2}, {PlayerName: "B", FinalGoals: 2},
+					{PlayerName: "C", FinalGoals: 2}, {PlayerName: "D", FinalGoals: 2}, // 8
+				}},
+				{Name: "Closest", Picks: [4]store.ArchivePick{
+					{PlayerName: "A", FinalGoals: 5}, {PlayerName: "B", FinalGoals: 5},
+					{PlayerName: "C", FinalGoals: 5}, {PlayerName: "D", FinalGoals: 5}, // 20
+				}},
+			},
+		},
+	}
+	e := betOneEmbed(t, &cmdInput{
+		snap: betBotSnap(), opts: cmdOptions{"season": "2025/26"}, sub: "show",
+		betStore: fbs, season: "2026/27",
+	})
+	body := allEmbedFields([][]*discordgo.MessageEmbed{{e}})
+	// Closest (20) before Faraway (8) before Busty (over 21, last).
+	if !(strings.Index(body, "Closest") < strings.Index(body, "Faraway") && strings.Index(body, "Faraway") < strings.Index(body, "Busty")) {
+		t.Errorf("archived rows not closest-to-21 with bust last:\n%s", body)
+	}
+	// The bust total keeps its marker.
+	if !strings.Contains(e.Fields[2].Name, "💥") {
+		t.Errorf("bust row lost its 💥 marker: %q", e.Fields[2].Name)
 	}
 }
 
@@ -223,6 +339,9 @@ func TestHandleBet_ShowUnknownArchivedSeasonListsAvailable(t *testing.T) {
 	}
 	if err := handleBet(in); err != nil {
 		t.Fatalf("handleBet: %v", err)
+	}
+	if len(r.embeds) != 0 {
+		t.Fatalf("emitted an embed, want plain text only: %v", r.embeds)
 	}
 	msg := r.messages[0]
 	if !strings.Contains(msg, "No archived record") || !strings.Contains(msg, "2024/25") {
@@ -470,9 +589,41 @@ func TestAutocompleteBet_MatchesPlayers(t *testing.T) {
 	}
 }
 
+func TestHandleBet_ShowSplitsPast25BettorsAcrossEmbeds(t *testing.T) {
+	var picks []store.BettorPicks
+	namer := fakeNamer{}
+	for i := 0; i < 26; i++ {
+		uid := fmt.Sprintf("u-%02d", i)
+		picks = append(picks, store.BettorPicks{DiscordUserID: uid, Elements: [4]int{1, 2, 3, 4}})
+		namer[uid] = fmt.Sprintf("Bettor%02d", i)
+	}
+
+	msgs := betEmbeds(t, &cmdInput{
+		snap: betBotSnap(), opts: cmdOptions{}, sub: "show",
+		betStore: &fakeBetStore{current: picks}, season: "2026/27",
+		isAdmin: func(string) bool { return false },
+		namer:   namer,
+	})
+
+	if countEmbedFields(msgs) != 26 {
+		t.Fatalf("total fields = %d, want 26 — no bettor dropped in the split", countEmbedFields(msgs))
+	}
+	// 26 fields split 25 + 1 across two embeds carried by one message.
+	if len(msgs) != 1 || len(msgs[0]) != 2 {
+		t.Fatalf("embed layout = %d message(s), want one message with two embeds", len(msgs))
+	}
+	if len(msgs[0][0].Fields) != maxEmbedFields || len(msgs[0][1].Fields) != 1 {
+		t.Errorf("field split = %d + %d, want 25 + 1", len(msgs[0][0].Fields), len(msgs[0][1].Fields))
+	}
+	// Only the first embed of the reply is titled.
+	if msgs[0][0].Title == "" || msgs[0][1].Title != "" {
+		t.Errorf("titles = %q / %q, want the first embed titled and the rest bare", msgs[0][0].Title, msgs[0][1].Title)
+	}
+}
+
 func TestHandleBet_ShowSplitsALongBoardAcrossMessages(t *testing.T) {
-	// One bettor with a very long display name, repeated enough that the packed
-	// output cannot fit a single Discord message.
+	// Each bettor carries a long display name, repeated enough that the packed
+	// fields cannot fit a single Discord message's character budget.
 	long := strings.Repeat("verylongname", 12)
 	var picks []store.BettorPicks
 	namer := fakeNamer{}
@@ -482,23 +633,23 @@ func TestHandleBet_ShowSplitsALongBoardAcrossMessages(t *testing.T) {
 		namer[uid] = uid
 	}
 
-	r := &recordingResponder{}
-	in := &cmdInput{
-		snap: betBotSnap(), opts: cmdOptions{}, sub: "show", resp: r,
+	msgs := betEmbeds(t, &cmdInput{
+		snap: betBotSnap(), opts: cmdOptions{}, sub: "show",
 		betStore: &fakeBetStore{current: picks}, season: "2026/27",
 		isAdmin: func(string) bool { return false },
 		namer:   namer,
+	})
+
+	if len(msgs) < 2 {
+		t.Fatalf("long board sent in %d message(s), want it split", len(msgs))
 	}
-	if err := handleBet(in); err != nil {
-		t.Fatalf("handleBet: %v", err)
-	}
-	if len(r.messages) < 2 {
-		t.Fatalf("long board sent in %d message(s), want it split", len(r.messages))
-	}
-	for i, m := range r.messages {
-		if len(m) > maxDiscordMessage {
-			t.Errorf("message %d is %d chars, over the %d limit", i, len(m), maxDiscordMessage)
+	for i, m := range msgs {
+		if len(m) > maxEmbedsPerMessage {
+			t.Errorf("message %d carries %d embeds, over the %d cap", i, len(m), maxEmbedsPerMessage)
 		}
+	}
+	if countEmbedFields(msgs) != 40 {
+		t.Errorf("total fields = %d, want 40 — no bettor truncated", countEmbedFields(msgs))
 	}
 }
 

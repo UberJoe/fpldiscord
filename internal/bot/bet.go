@@ -5,10 +5,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/UberJoe/fpldiscord/internal/bet"
 	"github.com/UberJoe/fpldiscord/internal/fpl"
 	"github.com/UberJoe/fpldiscord/internal/store"
+	"github.com/bwmarrin/discordgo"
 )
 
 // handleBet is the /bet dispatcher. With no subcommand (or `show`) it renders
@@ -52,9 +54,8 @@ func betShow(in *cmdInput) error {
 	}
 
 	board := bet.Leaderboard(picks, bet.SnapshotGoals(in.snap))
-	header := fmt.Sprintf("**Bet leaderboard — %s**", in.season)
-	for _, msg := range packCodeBlockMessages(header, betBoardBlocks(in, board, bet.SeasonComplete(in.snap)), maxDiscordMessage) {
-		if err := in.resp.Respond(msg); err != nil {
+	for _, embeds := range renderBetBoard(in, board, bet.SeasonComplete(in.snap)) {
+		if err := in.resp.RespondEmbeds(embeds); err != nil {
 			return err
 		}
 	}
@@ -85,9 +86,12 @@ func betShowArchived(in *cmdInput, season string) error {
 			"No archived record for %q. Archived seasons: %s", season, strings.Join(seasons, ", ")))
 	}
 
-	header := fmt.Sprintf("**Bet — %s (archived)**", season)
-	for _, msg := range packCodeBlockMessages(header, archivedBlocks(recs), maxDiscordMessage) {
-		if err := in.resp.Respond(msg); err != nil {
+	leagueName := ""
+	if in.snap != nil {
+		leagueName = in.snap.LeagueName
+	}
+	for _, embeds := range renderBetArchived(leagueName, season, recs) {
+		if err := in.resp.RespondEmbeds(embeds); err != nil {
 			return err
 		}
 	}
@@ -258,33 +262,58 @@ func betStatusGlyph(s bet.Status) string {
 	}
 }
 
-// betBoardBlocks renders one display block per bettor for the live leaderboard:
-// a header line (name, total, status marker, leader marker) and a second line
-// with the four players and each one's season goals. packCodeBlockMessages
-// wraps the blocks in monospace fences and splits across messages if the round
-// is long, so /bet can never produce a message Discord rejects for length. The
-// 🏆 is stamped on the leader only once the season is complete.
-func betBoardBlocks(in *cmdInput, board []bet.Bettor, complete bool) []string {
-	blocks := make([]string, 0, len(board))
+// renderBetBoard frames the live leaderboard as one or more messages of embeds,
+// mirroring renderWaiversContested: the shared scaffold carries the league name
+// on the author line, the title "Bet leaderboard — {season}", a provisional /
+// final colour bar and footer keyed on whether the season is complete, and the
+// snapshot build time as the Timestamp. One non-inline field per bettor —
+// heading = bettor, running total, status glyph and the leader tag ("(leading)"
+// while the season runs, "🏆" only once complete); value = the four
+// "WebName (goals)" picks — packed by the shared embedFieldChunker so a big
+// league spills across further messages rather than being truncated. Board order
+// is the caller's. The heading interpolates a member-namer display name, so it
+// is capped at the field-name limit; four picks always fit the value limit but
+// it is capped for symmetry.
+func renderBetBoard(in *cmdInput, board []bet.Bettor, complete bool) [][]*discordgo.MessageEmbed {
+	color, phase := colorProvisional, "provisional — goals can still move"
+	if complete {
+		color, phase = colorFinal, "final"
+	}
+	var leagueName string
+	var builtAt time.Time
+	if in.snap != nil {
+		leagueName, builtAt = in.snap.LeagueName, in.snap.BuiltAt
+	}
+
+	c := newEmbedFieldChunker(embedFieldScaffold{
+		leagueName:     leagueName,
+		builtAt:        builtAt,
+		title:          fmt.Sprintf("Bet leaderboard — %s", in.season),
+		color:          color,
+		footer:         fmt.Sprintf("%s · %s", in.season, phase),
+		titleFirstOnly: true,
+	})
 	for _, row := range board {
-		leader := ""
+		marker := betStatusGlyph(row.Status)
 		if row.Leader {
 			if complete {
-				leader = "  🏆"
+				marker += " 🏆"
 			} else {
-				leader = "  (leading)"
+				marker += " (leading)"
 			}
 		}
-		head := fmt.Sprintf("%-20s  %3d  %s%s", betDisplayName(in, row.DiscordUserID), row.Total, betStatusGlyph(row.Status), leader)
-		picks := "   " + strings.Join(pickCells(row.Picks[:]), "  ")
-		blocks = append(blocks, head+"\n"+picks)
+		name := fmt.Sprintf("%s  ·  %d  %s", betDisplayName(in, row.DiscordUserID), row.Total, marker)
+		c.add(capRunes(name, maxEmbedFieldName), capRunes(strings.Join(pickCells(row.Picks[:]), "  ·  "), maxEmbedFieldValue))
 	}
-	return blocks
+	c.flushMessage()
+	return c.messages
 }
 
-// archivedBlocks renders a frozen past season in the same block shape as the
-// live board, ordered closest-to-21 with over-21 totals last.
-func archivedBlocks(recs []store.ArchivedBettor) []string {
+// renderBetArchived frames a frozen past season in the same field-per-bettor
+// shape as the live board, ordered closest-to-21 with over-21 totals last (a
+// bust total keeps the 💥 marker), but always coloured final, footered
+// "archived", and with no Timestamp — no snapshot bears on a frozen record.
+func renderBetArchived(leagueName, season string, recs []store.ArchivedBettor) [][]*discordgo.MessageEmbed {
 	type line struct {
 		name  string
 		total int
@@ -309,20 +338,26 @@ func archivedBlocks(recs []store.ArchivedBettor) []string {
 		return lines[i].name < lines[j].name
 	})
 
-	blocks := make([]string, 0, len(lines))
+	c := newEmbedFieldChunker(embedFieldScaffold{
+		leagueName:     leagueName,
+		title:          fmt.Sprintf("Bet — %s (archived)", season),
+		color:          colorFinal,
+		footer:         fmt.Sprintf("%s · archived", season),
+		titleFirstOnly: true,
+	})
 	for _, l := range lines {
-		bustMark := ""
+		name := fmt.Sprintf("%s  ·  %d", l.name, l.total)
 		if l.total > bet.Target {
-			bustMark = "  💥"
+			name += "  💥"
 		}
 		cells := make([]string, 0, 4)
 		for _, p := range l.picks {
 			cells = append(cells, fmt.Sprintf("%s (%d)", p.PlayerName, p.FinalGoals))
 		}
-		head := fmt.Sprintf("%-20s  %3d%s", l.name, l.total, bustMark)
-		blocks = append(blocks, head+"\n   "+strings.Join(cells, "  "))
+		c.add(capRunes(name, maxEmbedFieldName), capRunes(strings.Join(cells, "  ·  "), maxEmbedFieldValue))
 	}
-	return blocks
+	c.flushMessage()
+	return c.messages
 }
 
 // pickCells renders each pick as "WebName (goals)", falling back to the raw
